@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Ward-Beck Systems Web Router: browser routing console (5×7 crosspoint matrix, POD-33 and ABB-1 sources).",
-  "license": "SEE LICENSE IN LICENSE",
+  "license": "UNLICENSED",
   "type": "module",
   "main": "src/index.ts",
   "exports": {
