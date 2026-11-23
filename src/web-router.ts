@@ -28,7 +28,7 @@ export const INPUTS: RouterChannel[] = [
   { tag: 'CH 1', name: 'Soundcard In', sub: 'Mic / Line In', pill: 'mic' },
   { tag: 'CH 2', name: 'System Audio', sub: 'Desktop / YouTube', pill: 'sys' },
   { tag: 'CH 3', name: 'POD-33 Tone', sub: 'DARS 100/400/1k', pill: 'pod' },
-  { tag: 'CH 4', name: 'Bit Buddy', sub: 'ABP-1 Bit Spitter', pill: 'abb' },
+  { tag: 'CH 4', name: 'Bit Buddy', sub: 'ABS-1 Bit Spitter', pill: 'abb' },
   { tag: 'CH 5', name: 'Pink / Sweep', sub: 'Noise Reference', pill: 'noise' },
 ];
 
@@ -39,7 +39,7 @@ export const OUTPUTS: RouterChannel[] = [
   { tag: 'OUT 4', name: 'Studio Cue / HP', sub: 'Control Room Listen', pill: 'out' },
   { tag: 'OUT 5', name: 'Ward-Beck Tap', sub: 'WBS Test Point Tap', pill: 'out' },
   { tag: 'OUT 6', name: 'POD-33 Tone Out', sub: 'wbs-flow-ref-tone DARS', pill: 'out' },
-  { tag: 'OUT 7', name: 'Bit Spitter Out', sub: 'wbs-flow-bit-spitter ABP-1', pill: 'out' },
+  { tag: 'OUT 7', name: 'Bit Spitter Out', sub: 'wbs-flow-bit-spitter ABS-1', pill: 'out' },
 ];
 
 const SHORT_OUT = ['XTM-4', 'POD-22', 'Speakers', 'Cue/HP', 'Test Tap', 'POD-33', 'Bit Spitter'];
@@ -360,6 +360,7 @@ export class WebRouter {
     this.matrix[IN_POD33][OUT_SPEAKERS] = on;
     if (on) this.audio?.startPod33Generator(this.pod33Config);
     else this.audio?.stopPod33Generator();
+    this.restartSpitterIfExt();
     this.post('/api/test_tone', { freq: this.pod33Config.freq, restart: on });
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
   }
@@ -368,7 +369,7 @@ export class WebRouter {
     this.bitBuddyEngaged = on;
     this.matrix[IN_BITBUDDY][0] = on;
     this.matrix[IN_BITBUDDY][OUT_SPEAKERS] = on;
-    if (on) this.audio?.startBitBuddyGenerator(this.bitBuddyConfig);
+    if (on) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
     else this.audio?.stopBitBuddyGenerator();
     this.post('/api/bitbuddy', on ? this.bitBuddyPayload() : { active: false });
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
@@ -376,20 +377,43 @@ export class WebRouter {
 
   private bitBuddyPayload() {
     const b = this.bitBuddyConfig;
-    return { active: true, pattern: b.pattern, pro_mode: b.proMode, audio_data: b.audioData === 'audio', sample_rate: b.sampleRate };
+    return {
+      active: true, pattern: b.pattern, pro_mode: b.proMode, audio_data: b.audioData === 'audio', sample_rate: b.sampleRate,
+      level_db: b.level, tone_hz: b.tone, ext: b.ext, ch_b: b.bOff ? 'off' : b.invert ? (b.cycle ? 'cycle_invert' : 'invert') : b.cycle ? 'cycle' : 'on',
+      validity: b.invalid,
+    };
+  }
+
+  /**
+   * ABS-1 SAMPLE RATE = EXT locks to an AES reference. In XTM the reference is
+   * the POD-33 DARS generator: engaged at a rate the CS8412 accepts (30-50 kHz).
+   */
+  get extRefLocked(): boolean {
+    return this.pod33Engaged && this.pod33Config.refClock !== 'int96';
+  }
+
+  /** Config handed to the audio engine: `ext` there means "EXT selected and unlocked" (muted). */
+  private spitterAudioConfig(): BitBuddyConfig {
+    const b = this.bitBuddyConfig;
+    return { ...b, ext: b.ext && !this.extRefLocked };
+  }
+
+  private restartSpitterIfExt(): void {
+    if (this.bitBuddyEngaged && this.bitBuddyConfig.ext) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
   }
 
   /** Update POD-33 settings (restarts the generator if it is running). */
   setPod33Config(patch: Partial<Pod33Config>): void {
     Object.assign(this.pod33Config, patch);
     if (this.pod33Engaged) this.audio?.startPod33Generator(this.pod33Config);
+    this.restartSpitterIfExt();
     this.refresh();
   }
 
   /** Update ABB-1 settings (restarts the generator if it is running). */
   setBitBuddyConfig(patch: Partial<BitBuddyConfig>): void {
     Object.assign(this.bitBuddyConfig, patch);
-    if (this.bitBuddyEngaged) this.audio?.startBitBuddyGenerator(this.bitBuddyConfig);
+    if (this.bitBuddyEngaged) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
     this.refresh();
   }
 
@@ -442,10 +466,12 @@ export class WebRouter {
   }
 
   private bitBuddyDb(): [number, number] {
-    const p = this.bitBuddyConfig.pattern;
-    const base = p === 'tone' ? -18 : p === 'minmax' ? -1 : -14;
+    const b = this.bitBuddyConfig, p = b.pattern;
+    if (b.ext && !this.extRefLocked) return [-60, -60]; // EXT with no reference: clock stopped, muted
+    const base = p === 'tone' ? (b.level === null ? -60 : b.level) : p === 'minmax' ? -1 : -14;
     const j = p === 'tone' ? 0 : Math.sin(Date.now() / 90) * 1.5;
-    return [base + j, base - j];
+    const bMuted = b.bOff || (b.cycle && Math.floor(Date.now() / 520) % 2 === 1);
+    return [base + j, bMuted ? -60 : base - j];
   }
 
   private setMeter(l: Element | undefined, r: Element | undefined, digits: Element | undefined, dbL: number, dbR: number): void {

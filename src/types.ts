@@ -10,9 +10,17 @@ export interface Pod33Config {
 
 export interface BitBuddyConfig {
   pattern: 'tone' | 'walk1s' | 'prbs' | 'minmax';
-  sampleRate: 48000 | 96000 | 44100;
+  sampleRate: 48000 | 44100 | 32000 | 96000;
   proMode: boolean;            // true = Professional AES3, false = Consumer S/PDIF
   audioData: 'audio' | 'data'; // PCM audio or non-audio bitstream
+  /* ABS-1 Bit Spitter front panel (abs1v103.asm PROCESS) */
+  level: 0 | -12 | -20 | null; // AUDIO LEVEL lamps: 0 / -12 / -20 dBFS, null = OFF
+  tone: 1000 | 400;            // TONE: 1KHz / 400Hz
+  ext: boolean;                // SAMPLE RATE stepped to EXT (lock to an AES reference)
+  cycle: boolean;              // CHB CYCLE: channel B on/off every ~0.5 s
+  invert: boolean;             // CHB INVERT: channel B out of phase
+  bOff: boolean;               // CHB OFF: channel B muted
+  invalid: boolean;            // INVALID: validity bit set on the AES stream
 }
 
 export const DEFAULT_POD33_CONFIG: Pod33Config = {
@@ -27,6 +35,13 @@ export const DEFAULT_BITBUDDY_CONFIG: BitBuddyConfig = {
   sampleRate: 48000,
   proMode: true,
   audioData: 'audio',
+  level: -20,
+  tone: 1000,
+  ext: false,
+  cycle: false,
+  invert: false,
+  bOff: false,
+  invalid: false,
 };
 
 /** The audio engine surface the router drives. Any engine with these methods works. */
