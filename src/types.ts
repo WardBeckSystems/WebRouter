@@ -89,7 +89,7 @@ export interface WebRouterOptions {
   daemonUrl?: string;
   /** Called when the router wants a different MXL flow shown (e.g. POD-33 engaged → ref tone flow). */
   onFlowHint?: (flowId: string) => void;
-  /** Clicking an MXL transmitter column opens that flow (XTM: the MXL transmitters tab). */
+  /** Clicking an MXL transmitter column opens that flow (XTM: the Transmitters tab). */
   onOpenFlow?: (flowId: string) => void;
   /**
    * A crosspoint on a Meter Input column was made: router input `input` now feeds the

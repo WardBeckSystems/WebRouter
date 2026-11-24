@@ -52,7 +52,7 @@ export const OUTPUTS: RouterChannel[] = [
   { tag: 'MTR 4', name: 'Meter Input 4', sub: 'XTM-4 INPUT 4 button', pill: 'mtr' },
   { tag: 'HW 1', name: 'Monitor 1 / Speakers', sub: 'Sound card out (ALSA)', pill: 'hw' },
   { tag: 'HW 2', name: 'Studio Cue / HP', sub: 'Sound card out (control room listen)', pill: 'hw' },
-  // The four MXL transmitters
+  // The four Transmitters
   { tag: 'MXL 1', name: 'Repeater', sub: 'MXL flow wbs-flow-master-stereo (repeats the routed mix) → /dev/shm/mxl', pill: 'mxl' },
   { tag: 'MXL 2', name: 'POD-33 1 kHz', sub: 'MXL flow POD-33-1kHz-Reference → /dev/shm/mxl', pill: 'mxl' },
   { tag: 'MXL 3', name: 'POD-33 400 / 100 Hz', sub: 'MXL flow POD-33-400Hz-Alignment / POD-33-100Hz-LowEnd (click the name to switch) → /dev/shm/mxl', pill: 'mxl' },
