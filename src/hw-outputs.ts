@@ -7,7 +7,7 @@
  */
 
 interface HwOutput { name: string; label: string; state: string; virtual: boolean; default: boolean }
-interface HwSource { name: string; label: string; kind: 'bus' | 'input' }
+interface HwSource { name: string; label: string; detail?: string; kind: 'bus' | 'input' }
 interface HwLink { module: string; source: string; sink: string; tap: boolean }
 interface HwStatus { outputs: HwOutput[]; sources: HwSource[]; links: HwLink[] }
 
@@ -85,7 +85,7 @@ export class HwOutputs {
       </th>`).join('');
     const rows = st.sources.map((s) => `
       <tr class="wr-grid-row">
-        <th class="wr-grid-in wr-hw-src" scope="row" title="${esc(s.label)}\n${esc(s.name)}">
+        <th class="wr-grid-in wr-hw-src" scope="row" title="${esc(s.label)}${s.detail ? '\n' + esc(s.detail) : ''}\n${esc(s.name)}">
           <span class="wr-strip-tag wr-pill-${s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'bus' ? 'BUS' : 'IN'}</span>
           <span class="wr-strip-name">${esc(s.label)}</span>
         </th>
