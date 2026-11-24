@@ -6,8 +6,8 @@
  * TAP makes or breaks (POST /api/hw). Same grid look as the main matrix.
  */
 
-interface HwOutput { name: string; label: string; state: string; virtual: boolean; default: boolean }
-interface HwSource { name: string; label: string; detail?: string; kind: 'bus' | 'input' }
+interface HwOutput { name: string; label: string; card?: string; card_name?: string; state: string; virtual: boolean; default: boolean }
+interface HwSource { name: string; label: string; card?: string; card_name?: string; detail?: string; kind: 'bus' | 'input' }
 interface HwLink { module: string; source: string; sink: string; tap: boolean }
 interface HwStatus { outputs: HwOutput[]; sources: HwSource[]; links: HwLink[] }
 
@@ -18,6 +18,13 @@ function shortOut(o: HwOutput): string {
   const paren = o.label.match(/\(([^)]+)\)\s*$/);
   if (paren) return paren[1];
   return o.label.replace(/\b(High Definition Audio Controller|Analog Stereo|Digital Stereo)\b/g, '').replace(/\s+/g, ' ').trim() || o.name;
+}
+
+/** Sound card name as ALSA lists it ("HDA NVidia"); the port is added only when a card has several. */
+function cardName(o: HwOutput | HwSource, all: (HwOutput | HwSource)[]): string {
+  if (!o.card_name) return o.label;
+  const shared = all.filter((x) => x.card === o.card).length > 1;
+  return shared ? `${o.card_name} · ${shortOut(o as HwOutput)}` : o.card_name;
 }
 
 export class HwOutputs {
@@ -77,8 +84,8 @@ export class HwOutputs {
       <th class="wr-grid-out-head wr-hw-out" scope="col" title="${esc(o.label)}\n${esc(o.name)}${o.default ? '\nDefault output' : ''}">
         <div class="wr-strip wr-out-strip${o.state === 'RUNNING' ? ' selected' : ''}">
           <div class="wr-strip-top">
-            <span class="wr-strip-tag wr-pill-out">HW ${i + 1}</span>
-            <span class="wr-strip-name">${esc(shortOut(o))}</span>
+            <span class="wr-strip-tag wr-pill-out">${o.card ? `card ${esc(o.card)}` : `HW ${i + 1}`}</span>
+            <span class="wr-strip-name">${esc(o.card_name ? cardName(o, st.outputs) : shortOut(o))}</span>
             <span class="wr-hw-led${o.state === 'RUNNING' ? ' on' : ''}" aria-label="${o.state}"></span>
           </div>
         </div>
@@ -86,15 +93,15 @@ export class HwOutputs {
     const rows = st.sources.map((s) => `
       <tr class="wr-grid-row">
         <th class="wr-grid-in wr-hw-src" scope="row" title="${esc(s.label)}${s.detail ? '\n' + esc(s.detail) : ''}\n${esc(s.name)}">
-          <span class="wr-strip-tag wr-pill-${s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'bus' ? 'BUS' : 'IN'}</span>
-          <span class="wr-strip-name">${esc(s.label)}</span>
+          <span class="wr-strip-tag wr-pill-${s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'bus' ? 'BUS' : s.card ? `card ${esc(s.card)}` : 'IN'}</span>
+          <span class="wr-strip-name">${esc(s.kind === 'bus' ? s.label : cardName(s, st.sources))}</span>
         </th>
         ${st.outputs.map((o) => {
           const l = linked(s.name, o.name);
           return `<td class="wr-td-crosspoint"><button type="button" class="wr-matrix-btn${l ? ' connected' : ''}"
             data-hw-src="${esc(s.name)}" data-hw-sink="${esc(o.name)}"
-            title="${esc(s.label)} → ${esc(shortOut(o))}${l?.tap ? ' (TAP speaker leg)' : ''}"
-            aria-label="${esc(s.label)} to ${esc(shortOut(o))}" aria-pressed="${l ? 'true' : 'false'}"><span class="wr-matrix-led"></span></button></td>`;
+            title="${esc(s.label)} → ${esc((o.card_name ? cardName(o, st.outputs) : shortOut(o)))}${l?.tap ? ' (TAP speaker leg)' : ''}"
+            aria-label="${esc(s.label)} to ${esc((o.card_name ? cardName(o, st.outputs) : shortOut(o)))}" aria-pressed="${l ? 'true' : 'false'}"><span class="wr-matrix-led"></span></button></td>`;
         }).join('')}
       </tr>`).join('');
     this.el.innerHTML = `
