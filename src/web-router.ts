@@ -26,7 +26,7 @@ import {
   type WebRouterLevels,
   type WebRouterOptions,
 } from './types';
-import { PIVOT_L, PIVOT_R, PIVOT_Y, clampDb, renderMeterPair, vuDbToAngle } from './vu-meter';
+import { PIVOT_L, PIVOT_R, PIVOT_Y, clampDb, renderArtMeterPair, renderMeterPair, vuDbToAngle, artTemplate, type MeterArt } from './vu-meter';
 import { HwOutputs } from './hw-outputs';
 
 export const INPUTS: RouterChannel[] = [
@@ -203,6 +203,12 @@ export class WebRouter {
   private tabPeak = -120;
   private listeners = new Set<(router: WebRouter) => void>();
   private wireObserver: ResizeObserver | null = null;
+  private meterArt?: () => MeterArt | null;
+  /** The host's meter, once it exists: every strip shows it in miniature. */
+  private art: MeterArt | null = null;
+  private artTries = 0;
+  /** The host meter element the strip copies were made from (a rebuild replaces it). */
+  private artSrc: Element | null = null;
   private wireFrame = 0;
 
   constructor(container: HTMLElement, opts: WebRouterOptions = {}) {
@@ -213,6 +219,7 @@ export class WebRouter {
     this.onOpenFlow = opts.onOpenFlow;
     this.onMeterInput = opts.onMeterInput;
     this.onPlayFlow = opts.onPlayFlow;
+    this.meterArt = opts.meterArt;
     try { this.rxChoice = JSON.parse(localStorage.getItem('wr.rxChoice') || '{}') || {}; } catch { /* private window */ }
     this.setMeterInputs(this.meterInputs);
     this.exclusive(PRESETS.broadcast.select); // one input per output from the start
@@ -231,6 +238,7 @@ export class WebRouter {
     this.tabInfoEl = q('#wrTabInfo');
     this.tabKey = '';
     this.rxKey = '';
+    this.fillArt();
     this.attachEvents();
     this.refresh();
     this.built = true;
@@ -360,7 +368,7 @@ export class WebRouter {
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
           ${isRxRow(idx) ? `<select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} stream"><option value="">Choose a stream…</option></select>
           <div class="wr-strip-info wr-rx-info" id="wrRxInfo${idx}"></div>` : ''}
-          ${renderMeterPair('wrIn', idx)}
+          ${this.meterPair('wrIn', idx)}
         </div>
       </th>${cells}</tr>`;
   }
@@ -381,10 +389,22 @@ export class WebRouter {
                 : `<span class="wr-strip-name">${SHORT_OUT[idx]}</span>`}
             ${c.pill === 'hw' ? `<button type="button" class="wr-btn-out-tool wr-btn-dim" data-out-dim="${idx}" title="Dim ${c.name} by 20 dB">-20dB</button>` : ''}
           </div>
-          ${renderMeterPair('wrOut', idx)}
+          ${this.meterPair('wrOut', idx)}
           ${idx === OUT_SPEAKERS ? `<input type="range" class="wr-level" data-out-level="${idx}" min="0" max="1" step="0.01" value="${this.speakerLevel}" title="Speaker level" aria-label="Speaker level">` : ''}
         </div>
       </th>`;
+  }
+
+  /** Put a copy of the host's meter into every strip. */
+  private fillArt(): void {
+    if (!this.art) return;
+    const t = artTemplate(this.art);
+    this.artSrc = t?.src ?? null;
+    this.container.querySelectorAll('.wr-art-slot').forEach((slot) => slot.replaceChildren(...(t ? [t.tpl.cloneNode(true)] : [])));
+  }
+
+  private meterPair(prefix: string, idx: number): string {
+    return this.art ? renderArtMeterPair(prefix, idx, this.art) : renderMeterPair(prefix, idx);
   }
 
   // ───────────────────────────── events ─────────────────────────────
@@ -818,8 +838,11 @@ export class WebRouter {
   }
 
   private setMeter(l: Element | undefined, r: Element | undefined, dbL: number, dbR: number): void {
-    l?.setAttribute('transform', `rotate(${vuDbToAngle(dbL).toFixed(1)} ${PIVOT_L} ${PIVOT_Y})`);
-    r?.setAttribute('transform', `rotate(${vuDbToAngle(dbR).toFixed(1)} ${PIVOT_R} ${PIVOT_Y})`);
+    const a = this.art;
+    const ang = (db: number) => (a ? a.angle(db) : vuDbToAngle(db)).toFixed(1);
+    const [xl, xr, y] = a ? [a.pivot[0], a.pivot[0], a.pivot[1]] : [PIVOT_L, PIVOT_R, PIVOT_Y];
+    l?.setAttribute('transform', `rotate(${ang(dbL)} ${xl} ${y})`);
+    r?.setAttribute('transform', `rotate(${ang(dbR)} ${xr} ${y})`);
   }
 
   /** The shared tab behind CH 2 (from the audio engine), or null when nothing is shared. */
@@ -873,6 +896,15 @@ export class WebRouter {
   /** Per-frame hook: move needles from the host's live levels. */
   render(levels?: WebRouterLevels | null): void {
     if (!this.built || !this.container.isConnected || this.container.offsetParent === null) return;
+    // The host's meter is built after the router: once it exists, redraw the strips with it.
+    if (this.meterArt && this.artTries++ % 30 === 0) {
+      if (!this.art) {
+        const art = this.meterArt();
+        if (art) { this.art = art; this.mount(); return; }
+      } else if (document.getElementById(this.art.href) !== this.artSrc) {
+        this.fillArt(); // the host rebuilt its meter (power, lamp, style, theme): copy it again
+      }
+    }
     const vuL = levels?.vuDb ? levels.vuDb[0] : -60;
     const vuR = levels?.vuDb ? levels.vuDb[1] : -60;
     const n = this.needles;

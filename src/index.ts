@@ -2,5 +2,6 @@
 /** Web Router — public entry point. Import the CSS once alongside. */
 export { WebRouter, INPUTS, OUTPUTS, RECEIVERS } from './web-router';
 export type { RxStream } from './web-router';
+export type { MeterArt } from './vu-meter';
 export * from './types';
 export { vuDbToAngle } from './vu-meter';

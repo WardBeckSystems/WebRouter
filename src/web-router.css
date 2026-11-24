@@ -1565,3 +1565,9 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 .wr-wires { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
 .wr-wire { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.45; }
 .wr-wire.live { opacity: 0.95; }
+
+/* Strips show the console's own VU meter in miniature; these are its L / R needles */
+.wr-art-needle { stroke-width: 1.4px; stroke-linecap: round; }
+.wr-art-needle-l { stroke: #111; }
+.wr-art-needle-r { stroke: #dc2626; }
+.wr-grid .wr-art-meter .wr-theme-meter-svg { height: 48px; }

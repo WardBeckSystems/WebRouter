@@ -101,6 +101,11 @@ export interface WebRouterOptions {
    * (XTM: puts that flow on the meters).
    */
   onPlayFlow?: (flowId: string) => void;
+  /**
+   * The host's VU meter to show in miniature on every strip (bezel and all); null until it
+   * exists. Without it the router draws its own small meter.
+   */
+  meterArt?: () => import('./vu-meter').MeterArt | null;
 }
 
 export interface RouterChannel {

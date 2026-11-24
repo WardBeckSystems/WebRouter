@@ -58,3 +58,62 @@ export function renderMeterPair(prefix: string, idx: number): string {
       </svg>
     </div>`;
 }
+
+/**
+ * A host's own meter, shown in miniature on every strip (bezel, face, lamps and all): the
+ * router copies its SVG (minus the needle) into each strip and draws its own L / R needles.
+ */
+export interface MeterArt {
+  /** id of the host's meter group */
+  href: string;
+  /** id of the needle inside it, left out of the copies */
+  needle: string;
+  /** viewBox around the whole meter, housing included: x y w h */
+  box: [number, number, number, number];
+  /** needle pivot and length, in the host's units */
+  pivot: [number, number];
+  length: number;
+  /** the glass window: needles are clipped to it so they never cross the bezel */
+  window: [number, number, number, number, number];
+  /** host's needle law: VU dB (0 = 0 VU, +3 = full scale) → degrees from vertical */
+  angle: (db: number) => number;
+}
+
+/** The host's meter in miniature, with this strip's two needles (L black, R red). */
+export function renderArtMeterPair(prefix: string, idx: number, art: MeterArt): string {
+  const [bx, by, bw, bh] = art.box;
+  const [px, py] = art.pivot;
+  const [wx, wy, ww, wh, wr] = art.window;
+  const rest = art.angle(-60).toFixed(1);
+  const clip = `${prefix}Win${idx}`;
+  const needle = (id: string, ch: 'l' | 'r') => `
+        <g id="${id}" class="wr-needle-group" transform="rotate(${rest} ${px} ${py})">
+          <line x1="${px}" y1="${py}" x2="${px}" y2="${py - art.length}" class="wr-art-needle wr-art-needle-${ch}" vector-effect="non-scaling-stroke"/>
+        </g>`;
+  return `
+    <div class="wr-theme-meters-wrap wr-art-meter" title="L black · R red">
+      <svg class="wr-theme-meter-svg" viewBox="${bx} ${by} ${bw} ${bh}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <clipPath id="${clip}"><rect x="${wx}" y="${wy}" width="${ww}" height="${wh}" rx="${wr}"/></clipPath>
+        <g class="wr-art-slot" pointer-events="none"></g>
+        <g clip-path="url(#${clip})">${needle(`${prefix}NeedleR${idx}`, 'r')}${needle(`${prefix}NeedleL${idx}`, 'l')}</g>
+      </svg>
+    </div>`;
+}
+
+/**
+ * The host meter as a template for the strips: a deep copy without its needle and with no
+ * ids (clip paths and gradients then resolve to the host's own, which share the geometry).
+ */
+export function artTemplate(art: MeterArt): { src: Element; tpl: Element } | null {
+  const src = document.getElementById(art.href);
+  if (!src) return null;
+  const tpl = src.cloneNode(true) as Element;
+  tpl.querySelector(`#${CSS.escape(art.needle)}`)?.remove();
+  tpl.querySelectorAll('title').forEach((t) => t.remove());
+  for (const el of [tpl, ...Array.from(tpl.querySelectorAll('*'))]) {
+    el.removeAttribute('id');
+    el.removeAttribute('data-btn');
+    el.classList.remove('xtm-btn');
+  }
+  return { src, tpl };
+}
