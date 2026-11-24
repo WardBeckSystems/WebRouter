@@ -1571,3 +1571,6 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 .wr-art-needle-l { stroke: #111; }
 .wr-art-needle-r { stroke: #dc2626; }
 .wr-grid .wr-art-meter .wr-theme-meter-svg { height: 48px; }
+
+/* No ENGAGE: every input is always listening; clicking its strip plays it */
+.wr-grid .wr-in-strip[data-in-idx] { cursor: pointer; }

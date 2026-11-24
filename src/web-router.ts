@@ -3,7 +3,7 @@
  * Web Router — Ward-Beck Systems browser routing console.
  *
  *   One grid: each input row starts with its strip (name · level · VU ·
- *   ENGAGE) followed by its crosspoints; the bottom row holds each
+ *   always listening, click to play) followed by its crosspoints; the bottom row holds each
  *   output's name · VU · level · -20 dB. A crosspoint is the mute: there
  *   are no separate mute or "to speakers" buttons.
  *
@@ -205,6 +205,15 @@ export class WebRouter {
   private listeners = new Set<(router: WebRouter) => void>();
   private wireObserver: ResizeObserver | null = null;
   private cueOn = false;
+  private rxStartedAt: Record<number, number> = {};
+  /** Each input's own level (VU dB L, R), heard all the time: TAP flows and the sound card. */
+  private srcDb: Record<number, [number, number]> = {};
+  private srcAt = 0;
+  private srcBusy = false;
+  private scProbe: { ctx: AudioContext; an: AnalyserNode[]; stream: MediaStream; id: string } | null = null;
+  private scBuf = new Float32Array(2048);
+  private scOpening = false;
+  private scDenied = false;
   /** CH 1: the sound card input it plays ('' = the default input), remembered per browser. */
   scDevice = '';
   private scInputs: { id: string; label: string }[] = [];
@@ -270,6 +279,7 @@ export class WebRouter {
   }
 
   destroy(): void {
+    this.closeProbe();
     this.wireObserver?.disconnect();
     this.wireObserver = null;
     if (this.daemonTimer !== null) window.clearInterval(this.daemonTimer);
@@ -326,6 +336,11 @@ export class WebRouter {
             const pt = st?.point;
             this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source };
             if (st?.active && pt?.ref && !this.rxChoice[+row]) this.rxChoice[+row] = String(pt.ref);
+            // Always listening: a chosen stream the TAP is not receiving (restart, reload) is started
+            if (!st?.active && this.rxChoice[+row] && Date.now() - (this.rxStartedAt[+row] ?? 0) > 10000) {
+              this.rxStartedAt[+row] = Date.now();
+              this.startReceiver(+row);
+            }
           }
           this.renderRx();
         })
@@ -370,11 +385,10 @@ export class WebRouter {
       </td>`).join('');
     return `<tr class="wr-grid-row">
       <th class="wr-grid-in" scope="row">
-        <div class="wr-strip wr-in-strip" id="wrInStrip${idx}" title="${c.name} — ${c.sub}">
+        <div class="wr-strip wr-in-strip" id="wrInStrip${idx}" data-in-idx="${idx}" title="${c.name} — ${c.sub}\nAlways listening: its meter shows the source. Click to play it.">
           <div class="wr-strip-top">
             <span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>
             <span class="wr-strip-name" id="wrInName${idx}">${c.name}</span>
-            <button type="button" class="wr-btn-engage" data-in-idx="${idx}">ENGAGE</button>
           </div>
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
           ${idx === IN_SOUNDCARD ? `<select class="wr-rx-pick" data-sc-pick aria-label="${c.name} device"><option value="">Default input</option></select>` : ''}
@@ -434,7 +448,11 @@ export class WebRouter {
       if (t.dataset?.scPick !== undefined) this.setSoundCard(t.value);
     });
     root.addEventListener('click', (e) => {
-      const t = (e.target as HTMLElement).closest('button');
+      const el = e.target as HTMLElement;
+      // Clicking an input strip (not its picker) plays that input
+      const strip = el.closest<HTMLElement>('.wr-in-strip[data-in-idx]');
+      if (strip && !el.closest('select') && root.contains(strip)) { this.selectInput(+strip.dataset.inIdx!); return; }
+      const t = el.closest('button');
       if (!t || !root.contains(t)) return;
       const d = t.dataset;
       if (d.row !== undefined) return this.toggleCrosspoint(+d.row, +(d.col ?? 0));
@@ -580,6 +598,7 @@ export class WebRouter {
   /** Choose CH 1's sound card input; it plays straight away. */
   setSoundCard(deviceId: string): void {
     this.scDevice = deviceId;
+    this.scDenied = false;
     try { localStorage.setItem('wr.scDevice', deviceId); } catch { /* ignore */ }
     this.selectInput(IN_SOUNDCARD);
     void this.loadSoundCards(); // names appear once the browser has been allowed the input
@@ -596,8 +615,7 @@ export class WebRouter {
       this.renderRx();
       return;
     }
-    if (this.activeInput === idx) this.startReceiver(idx);
-    else this.selectInput(idx);
+    this.startReceiver(idx); // listening from now on, played or not
   }
 
   /** Have the TAP receive the row's stream, then play the receiver's MXL flow. */
@@ -613,9 +631,8 @@ export class WebRouter {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slot: rx.slot, kind: 'aoip', ref, label: name }),
     }).catch(() => {}).finally(() => {
-      if (this.activeInput === idx) this.onPlayFlow?.(rx.flow);
+      if (this.activeInput === idx) { this.onPlayFlow?.(rx.flow); this.onFlowHint?.(rx.flow); }
     });
-    this.onFlowHint?.(rx.flow);
   }
 
   /** Receiver rows: the stream list and what the TAP says about each one. */
@@ -786,8 +803,6 @@ export class WebRouter {
     INPUTS.forEach((_, i) => {
       const live = this.isInputLive(i);
       root.querySelector(`#wrInStrip${i}`)?.classList.toggle('selected', live);
-      const eng = root.querySelector<HTMLElement>(`[data-in-idx="${i}"]`);
-      if (eng) { eng.classList.toggle('engaged', live); eng.title = live ? 'Routed' : 'Engage'; }
       root.querySelector(`#wrInStrip${i}`)?.closest('tr')?.classList.toggle('live', live);
     });
     OUTPUTS.forEach((_, i) => {
@@ -939,6 +954,82 @@ export class WebRouter {
     return lines.filter(Boolean).join('\n');
   }
 
+  /** TAP flows behind the inputs: POD-33 AES1-4 (ref tone), Bit Buddy, the two receivers. */
+  private static readonly SRC_FLOWS: Record<string, number[]> = {
+    'wbs-flow-ref-tone': [IN_POD33, IN_POD33 + 1, IN_POD33 + 2, IN_POD33 + 3],
+    'wbs-flow-bit-spitter': [IN_BITBUDDY],
+    'wbs-network-rx': [8],
+    'wbs-moip-rx': [9],
+  };
+
+  /** Keep every source's level fresh: TAP flow meters (5 a second) and the sound card probe. */
+  private listen(): void {
+    const now = performance.now();
+    if (!this.srcBusy && now - this.srcAt > 200) {
+      this.srcAt = now;
+      this.srcBusy = true;
+      const drop = () => { for (const k of Object.keys(this.srcDb)) if (+k !== IN_SOUNDCARD) delete this.srcDb[+k]; };
+      fetch(`${this.daemonUrl}/api/mxl/rings?bins=60`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          drop();
+          for (const f of d?.flows ?? []) {
+            const rows = WebRouter.SRC_FLOWS[f.flow_id];
+            if (!rows) continue;
+            const ch = f.channels ?? [];
+            // RMS dBFS → VU (0 VU = -18 dBFS, EBU alignment)
+            const vu = (c: any) => (typeof c?.rms_db === 'number' && c.rms_db > -100 ? c.rms_db + 18 : -60);
+            const db: [number, number] = [vu(ch[0]), vu(ch[1] ?? ch[0])];
+            rows.forEach((r) => { this.srcDb[r] = db; });
+          }
+        })
+        .catch(drop)
+        .finally(() => { this.srcBusy = false; });
+    }
+    this.probeSoundCard();
+  }
+
+  /** CH 1 listens to its sound card all the time (its own small analyser, not the meter's input). */
+  private probeSoundCard(): void {
+    const id = this.scDevice || 'default';
+    if (this.scProbe && this.scProbe.id !== id) this.closeProbe();
+    if (!this.scProbe) {
+      if (this.scOpening || this.scDenied || !navigator.mediaDevices?.getUserMedia) return;
+      this.scOpening = true;
+      navigator.mediaDevices.getUserMedia({ audio: { deviceId: this.scDevice ? { exact: this.scDevice } : undefined, echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 } })
+        .then((stream) => {
+          const ctx = new AudioContext();
+          const src = ctx.createMediaStreamSource(stream);
+          const split = ctx.createChannelSplitter(2);
+          src.connect(split);
+          const an = [0, 1].map((c) => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, c); return a; });
+          this.scProbe = { ctx, an, stream, id };
+          void this.loadSoundCards(); // names are readable now
+        })
+        .catch(() => { this.scDenied = true; })
+        .finally(() => { this.scOpening = false; });
+      return;
+    }
+    const rms = (a: AnalyserNode) => {
+      a.getFloatTimeDomainData(this.scBuf);
+      let sum = 0;
+      for (let i = 0; i < this.scBuf.length; i++) sum += this.scBuf[i] * this.scBuf[i];
+      const r = Math.sqrt(sum / this.scBuf.length);
+      return r > 1e-5 ? 20 * Math.log10(r) + 18 : -60; // dBFS → VU, 0 VU = -18 dBFS
+    };
+    const [l, r] = this.scProbe.an;
+    const prev = this.srcDb[IN_SOUNDCARD] ?? [-60, -60];
+    const k = 0.12; // ~300 ms VU ballistics at 60 fps
+    this.srcDb[IN_SOUNDCARD] = [prev[0] + (rms(l) - prev[0]) * k, prev[1] + (rms(r) - prev[1]) * k];
+  }
+
+  private closeProbe(): void {
+    this.scProbe?.stream.getTracks().forEach((t) => t.stop());
+    void this.scProbe?.ctx.close();
+    this.scProbe = null;
+    delete this.srcDb[IN_SOUNDCARD];
+  }
+
   /** Per-frame hook: move needles from the host's live levels. */
   render(levels?: WebRouterLevels | null): void {
     if (!this.built || !this.container.isConnected || this.container.offsetParent === null) return;
@@ -958,7 +1049,10 @@ export class WebRouter {
     this.renderTabStrip(levels);
 
     // Each input's own level: generators from their settings, the playing source from the engine.
+    this.listen();
+    // Every input is always listening: its own level, whether it is playing or not.
     const rowDb = INPUTS.map((_, i): [number, number] => {
+      if (this.srcDb[i]) return this.srcDb[i];
       if (isPod33Row(i) && this.pod33Engaged) return this.pod33Db();
       if (i === IN_BITBUDDY && this.bitBuddyEngaged) return this.bitBuddyDb();
       if (i === this.activeInput && !this.externalSource && (i !== IN_TAB || this.tabInfo)) return [vuL, vuR];
