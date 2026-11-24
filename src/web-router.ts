@@ -208,6 +208,8 @@ export class WebRouter {
   private needles: { inL: Element[]; inR: Element[]; outL: Element[]; outR: Element[] } = { inL: [], inR: [], outL: [], outR: [] };
   private built = false;
   private rxIdle = 0;
+  /** Each output's last meter reading [L, R] in VU dB (the hardware tab shows HW 1 / HW 2). */
+  private outDb: [number, number][] = [];
   /** Own tabs, mounted by the host: the receivers (Network, MoIP) and the hardware grid. */
   private rxEl: HTMLElement | null = null;
   private hwEl: HTMLElement | null = null;
@@ -297,7 +299,8 @@ export class WebRouter {
   private mountHw(): void {
     const card = this.hwEl?.querySelector<HTMLElement>('.wr-hw-card');
     if (!card || this.hw) return;
-    this.hw = new HwOutputs(card, this.daemonUrl).mount();
+    this.hw = new HwOutputs(card, this.daemonUrl, (tag) =>
+      tag === 'HW 1' ? this.outDb[OUT_SPEAKERS] ?? null : tag === 'HW 2' ? this.outDb[OUT_CUE] ?? null : null).mount();
   }
 
   /** The receivers (CH 9 Network, CH 10 MoIP) in their own tab: which flow each one listens to. */
@@ -341,6 +344,29 @@ export class WebRouter {
     this.built = false;
   }
 
+  /**
+   * Can `row` reach output `col`? Without the TAP the router is only the tab and the sound
+   * card to the meters and speakers: no generators, receivers, cue bus or transmitters, and
+   * nothing passes through the router. With it, the transmitters take only their own source.
+   */
+  canRoute(row: number, col: number): boolean {
+    if (!this.daemonOnline && (row >= IN_POD33 || col >= OUT_CUE)) return false;
+    if (col === OUT_POD33 || col === OUT_POD33_LOW) return isPod33Row(row);
+    if (col === OUT_BITS) return row === IN_BITBUDDY;
+    return true;
+  }
+
+  /** The TAP went away: stop every generator, drop the routes it carried, back to tab / sound card. */
+  private goOffline(): void {
+    this.daemonOnline = false;
+    if (this.pod33Engaged) { this.pod33Engaged = false; this.audio?.stopPod33Generator(); }
+    if (this.bitBuddyEngaged) { this.bitBuddyEngaged = false; this.audio?.stopBitBuddyGenerator(); }
+    this.matrix.forEach((r, i) => r.forEach((on, c) => { if (on && !this.canRoute(i, c)) r[c] = false; }));
+    if (this.activeInput >= IN_POD33) this.selectInput(IN_SOUNDCARD);
+    this.syncMonitor();
+    this.refresh();
+  }
+
   /** Poll the daemon's Bit Buddy so every page shows (and controls) the one shared generator. */
   private watchDaemon(): void {
     if (this.daemonTimer !== null) return;
@@ -350,6 +376,7 @@ export class WebRouter {
         .then((st: { active?: boolean; config?: { pattern?: string }; test_tone?: { active?: boolean } }) => {
           const wasOnline = this.daemonOnline;
           this.daemonOnline = true;
+          if (!wasOnline) this.refresh(); // the full router (generators, receivers, TAP outputs) comes back
           // The daemon took over: silence the browser copy so it is only heard once.
           if (!wasOnline) this.audio?.stopBitBuddyGenerator();
           const pat = st.config?.pattern as BitBuddyConfig['pattern'] | undefined;
@@ -364,9 +391,7 @@ export class WebRouter {
         })
         .catch(() => {
           if (!this.daemonOnline) return;
-          this.daemonOnline = false;
-          // Daemon gone: the browser generator carries on for this page.
-          if (this.bitBuddyEngaged) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
+          this.goOffline();
         });
     };
     const pollRx = () => {
@@ -428,12 +453,12 @@ export class WebRouter {
   /** Row header = the input strip: tag · name · level, VU pair, ENGAGE. The crosspoints follow. */
   private renderInputRow(c: RouterChannel, idx: number): string {
     const cells = OUTPUTS.map((o, col) => `
-      <td class="wr-td-crosspoint">
+      <td class="wr-td-crosspoint${col >= OUT_CUE ? ' wr-tap-only' : ''}">
         <button type="button" class="wr-matrix-btn" data-row="${idx}" data-col="${col}" title="${c.name} → ${o.name}" aria-label="${c.name} to ${o.name}">
           <span class="wr-matrix-led"></span>
         </button>
       </td>`).join('');
-    return `<tr class="wr-grid-row">
+    return `<tr class="wr-grid-row${idx >= IN_POD33 ? ' wr-tap-only' : ''}">
       <th class="wr-grid-in" scope="row">
         <div class="wr-strip wr-in-strip" id="wrInStrip${idx}" data-in-idx="${idx}" title="${c.name} — ${c.sub}\nAlways listening: its meter shows the source. Click to play it.">
           <div class="wr-strip-top">
@@ -454,7 +479,7 @@ export class WebRouter {
       ? `<button type="button" class="wr-strip-tag wr-pill-mxl wr-btn-open-flow" data-open-flow="${idx}" title="Open the ${c.name} MXL transmitter">${c.tag}</button>`
       : `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`;
     return `
-      <th class="wr-grid-out-head wr-grid-out" scope="col">
+      <th class="wr-grid-out-head wr-grid-out${idx >= OUT_CUE ? ' wr-tap-only' : ''}" scope="col">
         <div class="wr-strip wr-out-strip" id="wrOutStrip${idx}" title="${c.name} — ${c.sub}">
           <div class="wr-strip-top">
             ${this.art ? '' : tag}
@@ -573,6 +598,7 @@ export class WebRouter {
   }
 
   toggleCrosspoint(row: number, col: number): void {
+    if (!this.canRoute(row, col)) return;
     if (col < METERS) {
       // A meter input takes one source: the new crosspoint replaces the old, and the
       // meter's INPUT button follows (the host assigns and plays it).
@@ -606,6 +632,7 @@ export class WebRouter {
   }
 
   selectInput(idx: number): void {
+    if (!this.daemonOnline && idx >= IN_POD33) return; // generators and receivers need the TAP
     this.activeInput = idx;
     const audio = this.audio;
     this.resumeAudio();
@@ -913,8 +940,13 @@ export class WebRouter {
   /** Sync every button/LED/class to current state. Cheap; called after each change. */
   refresh(): void {
     const root = this.container;
-    root.querySelectorAll<HTMLElement>('.wr-matrix-btn[data-row]').forEach((b) => {
-      b.classList.toggle('connected', this.matrix[+b.dataset.row!][+b.dataset.col!]);
+    // Only a possible route is a button; without the TAP only the tab and sound card remain
+    root.classList.toggle('wr-tap-off', !this.daemonOnline);
+    root.querySelectorAll<HTMLButtonElement>('.wr-matrix-btn[data-row]').forEach((b) => {
+      const ok = this.canRoute(+b.dataset.row!, +b.dataset.col!);
+      b.classList.toggle('wr-na', !ok);
+      b.disabled = !ok;
+      b.classList.toggle('connected', ok && this.matrix[+b.dataset.row!][+b.dataset.col!]);
     });
     INPUTS.forEach((_, i) => {
       const live = this.isInputLive(i);
@@ -1201,6 +1233,7 @@ export class WebRouter {
         }
         db = [clampDb(db[0] + dim), clampDb(db[1] + dim)];
       }
+      this.outDb[o] = db;
       this.setMeter(n.outL[o], n.outR[o], db[0], db[1]);
     });
   }

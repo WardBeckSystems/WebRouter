@@ -34,7 +34,23 @@ export class HwOutputs {
   private timer: number | undefined;
   private busy = false;
 
-  constructor(private el: HTMLElement, private daemonUrl: string) {}
+  private meterTimer: number | undefined;
+
+  /** levelOf("HW 1") → [L, R] in VU dB (0 VU = −18 dBFS): the router's own HW 1 / HW 2 meters. */
+  constructor(private el: HTMLElement, private daemonUrl: string, private levelOf?: (tag: string) => [number, number] | null) {}
+
+  /** HW 1 / HW 2 rows carry a small meter pair, fed from the router's output meters. */
+  private meterTick(): void {
+    if (!this.levelOf || this.el.offsetParent === null) return;
+    this.el.querySelectorAll<HTMLElement>('[data-hw-bar]').forEach((bar) => {
+      const db = this.levelOf!(bar.dataset.hwBar!);
+      bar.querySelectorAll<HTMLElement>('i').forEach((seg, c) => {
+        const v = db ? db[c] : -60;
+        seg.style.width = `${Math.max(0, Math.min(100, ((v + 40) / 43) * 100))}%`; // −40 … +3 VU
+        seg.classList.toggle('hot', v > 0);
+      });
+    });
+  }
 
   mount(): this {
     this.el.addEventListener('click', (e) => {
@@ -45,10 +61,11 @@ export class HwOutputs {
     const poll = () => { if ((this.el.parentElement as HTMLElement | null)?.offsetParent !== null) this.load(); };
     poll();
     this.timer = window.setInterval(poll, 2500);
+    this.meterTimer = window.setInterval(() => this.meterTick(), 33);
     return this;
   }
 
-  destroy(): void { clearInterval(this.timer); }
+  destroy(): void { clearInterval(this.timer); clearInterval(this.meterTimer); }
 
   private load(): void {
     if (this.busy) return;
@@ -96,6 +113,7 @@ export class HwOutputs {
         <th class="wr-grid-in wr-hw-src" scope="row" title="${esc(s.label)}${s.detail ? '\n' + esc(s.detail) : ''}\n${esc(s.name)}">
           <span class="wr-strip-tag wr-pill-${s.kind === 'out' ? 'hw' : s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'out' ? esc(s.tag || 'HW') : s.kind === 'bus' ? 'BUS' : s.card ? `card ${esc(s.card)}` : 'IN'}</span>
           <span class="wr-strip-name">${esc(s.kind === 'input' ? cardName(s, st.sources) : s.label)}</span>
+          ${s.kind === 'out' && this.levelOf ? `<span class="wr-hw-bar" data-hw-bar="${esc(s.tag || '')}" aria-hidden="true"><i></i><i></i></span>` : ''}
         </th>
         ${st.outputs.map((o) => {
           const l = linked(s.name, o.name);
