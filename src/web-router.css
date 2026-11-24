@@ -1559,3 +1559,9 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 }
 .wr-grid .wr-in-strip .wr-rx-info { grid-column: 1; }
 .wr-rx-info.wr-rx-error { color: #dc2626; white-space: normal; }
+
+/* Signal-flow wires over the crosspoint grid (drawWires): input → along the row → up to the output */
+.wr-wire-wrap { position: relative; }
+.wr-wires { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 2; overflow: visible; }
+.wr-wire { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.45; }
+.wr-wire.live { opacity: 0.95; }

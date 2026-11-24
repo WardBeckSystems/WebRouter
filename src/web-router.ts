@@ -202,6 +202,8 @@ export class WebRouter {
   private tabInfoEl: Element | null = null;
   private tabPeak = -120;
   private listeners = new Set<(router: WebRouter) => void>();
+  private wireObserver: ResizeObserver | null = null;
+  private wireFrame = 0;
 
   constructor(container: HTMLElement, opts: WebRouterOptions = {}) {
     this.container = container;
@@ -234,6 +236,11 @@ export class WebRouter {
     this.built = true;
     this.watchDaemon();
     this.renderRx();
+    // Wires follow the layout: fonts loading, the tab being shown, the window resizing.
+    this.wireObserver?.disconnect();
+    this.wireObserver = new ResizeObserver(() => this.queueWires());
+    const tbl = this.container.querySelector('.wr-grid');
+    if (tbl) this.wireObserver.observe(tbl);
     this.hw?.destroy();
     this.hw = new HwOutputs(q('#wrHw') as HTMLElement, this.daemonUrl).mount();
     return this;
@@ -244,6 +251,8 @@ export class WebRouter {
   }
 
   destroy(): void {
+    this.wireObserver?.disconnect();
+    this.wireObserver = null;
     if (this.daemonTimer !== null) window.clearInterval(this.daemonTimer);
     this.daemonTimer = null;
     this.container.innerHTML = '';
@@ -314,6 +323,8 @@ export class WebRouter {
     return `
       <div class="wr-rack">
         <div class="wr-grid-card">
+          <div class="wr-wire-wrap">
+          <svg class="wr-wires" aria-hidden="true"></svg>
           <table class="wr-matrix-table wr-grid" aria-label="Crosspoint matrix: inputs down, outputs across">
             <thead><tr>
               <th class="wr-grid-corner" aria-label="Inputs down, outputs across"></th>
@@ -321,6 +332,7 @@ export class WebRouter {
             </tr></thead>
             <tbody>${INPUTS.map((c, r) => this.renderInputRow(c, r)).join('')}</tbody>
           </table>
+          </div>
         </div>
 
         <!-- Every sound card output on the host and what it listens to (hw-outputs.ts, TAP /api/hw) -->
@@ -723,7 +735,70 @@ export class WebRouter {
       root.querySelector(`#wrOutStrip${o}`)?.classList.toggle('selected', on);
     });
 
+    this.queueWires();
     this.listeners.forEach((cb) => cb(this));
+  }
+
+  private queueWires(): void {
+    if (this.wireFrame) return;
+    this.wireFrame = requestAnimationFrame(() => { this.wireFrame = 0; this.drawWires(); });
+  }
+
+  /**
+   * The signal flow, drawn: each made crosspoint gets a wire from its input strip, left to
+   * right along the row to the crosspoint, then up the column to the output, in the input's
+   * channel colour. Wires pass behind the other crosspoints (broken around their buttons).
+   */
+  private drawWires(): void {
+    const svg = this.container.querySelector<SVGSVGElement>('.wr-wires');
+    const wrap = svg?.parentElement;
+    if (!svg || !wrap) return;
+    const box = wrap.getBoundingClientRect();
+    if (!box.width) return; // hidden: drawn again when shown
+    svg.setAttribute('width', String(wrap.scrollWidth));
+    svg.setAttribute('height', String(wrap.scrollHeight));
+    const rel = (r: DOMRect) => ({ l: r.left - box.left, r: r.right - box.left, t: r.top - box.top, b: r.bottom - box.top });
+    const btns = new Map<string, ReturnType<typeof rel>>();
+    this.container.querySelectorAll<HTMLElement>('.wr-matrix-btn[data-row]').forEach((b) => btns.set(`${b.dataset.row},${b.dataset.col}`, rel(b.getBoundingClientRect())));
+    const GAP = 3;
+    // A straight run from a to b on one axis, with gaps where buttons sit on it.
+    const run = (fixed: number, a: number, b: number, holes: [number, number][], horiz: boolean): string => {
+      const cuts = holes.filter(([h0, h1]) => h1 > a && h0 < b).sort((x, y) => x[0] - y[0]);
+      let d = '', at = a;
+      for (const [h0, h1] of cuts) {
+        if (h0 - GAP > at) d += horiz ? `M${at},${fixed}H${h0 - GAP}` : `M${fixed},${at}V${h0 - GAP}`;
+        at = Math.max(at, h1 + GAP);
+      }
+      if (b > at) d += horiz ? `M${at},${fixed}H${b}` : `M${fixed},${at}V${b}`;
+      return d;
+    };
+    const paths: string[] = [];
+    INPUTS.forEach((_, r) => {
+      const strip = this.container.querySelector(`#wrInStrip${r}`);
+      const tag = strip?.querySelector('.wr-strip-tag');
+      if (!strip || !tag) return;
+      const colour = getComputedStyle(tag).backgroundColor;
+      const live = this.isInputLive(r);
+      const s0 = rel(strip.getBoundingClientRect());
+      const cols = OUTPUTS.map((_, c) => c).filter((c) => this.matrix[r][c]);
+      if (!cols.length) return;
+      const rowBtns = OUTPUTS.map((_, c) => btns.get(`${r},${c}`)!).filter(Boolean);
+      const y = (rowBtns[0].t + rowBtns[0].b) / 2;
+      const far = btns.get(`${r},${Math.max(...cols)}`)!;
+      // Along the row: from the strip to the last crosspoint it makes
+      let d = run(y, s0.r, far.l - GAP, rowBtns.filter((b) => b !== far).map((b) => [b.l, b.r]), true);
+      for (const c of cols) {
+        const b = btns.get(`${r},${c}`)!;
+        const x = (b.l + b.r) / 2;
+        const head = this.container.querySelector(`#wrOutStrip${c}`);
+        const top = head ? rel(head.getBoundingClientRect()).b : 0;
+        // Up the column: from the crosspoint to its output
+        const colBtns = INPUTS.map((_, i) => btns.get(`${i},${c}`)!).filter((v) => v && v !== b);
+        d += run(x, top, b.t - GAP, colBtns.map((v) => [v.t, v.b]), false);
+      }
+      paths.push(`<path d="${d}" stroke="${colour}" class="wr-wire${live ? ' live' : ''}"/>`);
+    });
+    svg.innerHTML = paths.join('');
   }
 
   // ───────────────────────────── metering ─────────────────────────────
