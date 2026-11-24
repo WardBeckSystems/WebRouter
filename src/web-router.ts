@@ -229,7 +229,7 @@ export class WebRouter {
     const poll = () => {
       fetch(`${this.daemonUrl}/api/bitbuddy`, { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((st: { active?: boolean; config?: { pattern?: string } }) => {
+        .then((st: { active?: boolean; config?: { pattern?: string }; test_tone?: { active?: boolean } }) => {
           const wasOnline = this.daemonOnline;
           this.daemonOnline = true;
           // The daemon took over: silence the browser copy so it is only heard once.
@@ -238,6 +238,9 @@ export class WebRouter {
           const patChanged = !!pat && pat !== this.bitBuddyConfig.pattern;
           if (patChanged) this.bitBuddyConfig.pattern = pat!;
           if (Date.now() - this.bbLocalAt < 2000) return;
+          // The daemon's tone outlives a reload: show it as engaged so it can be switched off.
+          const tone = st.test_tone?.active;
+          if (tone !== undefined && tone !== this.pod33Engaged) this.applyPod33(tone);
           if (!!st.active !== this.bitBuddyEngaged) this.applyBitBuddy(!!st.active);
           else if (patChanged) this.refresh();
         })
@@ -429,6 +432,9 @@ export class WebRouter {
     this.activeInput = idx;
     const audio = this.audio;
     this.resumeAudio();
+    // One input at a time: a generator left running would keep playing under the new input.
+    if (!isPod33Row(idx) && this.pod33Engaged) this.setPod33(false, false);
+    if (idx !== IN_BITBUDDY && this.bitBuddyEngaged) this.setBitBuddy(false, false);
     if (isPod33Row(idx)) this.setPod33(true, false);
     else if (idx === IN_BITBUDDY) this.setBitBuddy(true, false);
     else if (audio) {
@@ -480,12 +486,19 @@ export class WebRouter {
   }
 
   setPod33(on: boolean, sync = true): void {
+    this.bbLocalAt = Date.now();
+    this.applyPod33(on, false);
+    this.post('/api/test_tone', { freq: this.pod33Config.freq, restart: on });
+    if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
+  }
+
+  /** Local POD-33 state (route + browser generator), without telling the daemon. */
+  private applyPod33(on: boolean, sync = true): void {
     this.pod33Engaged = on;
     this.route(IN_POD33, OUT_SPEAKERS, on);
     if (on) this.audio?.startPod33Generator(this.pod33Config);
     else this.audio?.stopPod33Generator();
     this.restartSpitterIfExt();
-    this.post('/api/test_tone', { freq: this.pod33Config.freq, restart: on });
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
   }
 
