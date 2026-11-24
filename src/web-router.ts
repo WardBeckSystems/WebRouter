@@ -88,6 +88,7 @@ const FLOW_100 = '25030044-0440-4416-8000-000000000004';
 const METERS = 4; // columns 0-3: Meter Input 1-4
 const OUT_SPEAKERS = 4;
 const OUT_CUE = 5;
+const OUT_REPEATER = 6;
 const OUT_POD33 = 7;
 const OUT_POD33_LOW = 8; // 400 / 100 Hz, switchable
 const OUT_BITS = 9;
@@ -208,6 +209,7 @@ export class WebRouter {
   private needles: { inL: Element[]; inR: Element[]; outL: Element[]; outR: Element[] } = { inL: [], inR: [], outL: [], outR: [] };
   private built = false;
   private rxIdle = 0;
+  private kickTimers: number[] = [];
   /** Each output's last meter reading [L, R] in VU dB (the hardware tab shows HW 1 / HW 2). */
   private outDb: [number, number][] = [];
   /** Own tabs, mounted by the host: the receivers (Network, MoIP) and the hardware grid. */
@@ -303,28 +305,81 @@ export class WebRouter {
       tag === 'HW 1' ? this.outDb[OUT_SPEAKERS] ?? null : tag === 'HW 2' ? this.outDb[OUT_CUE] ?? null : null).mount();
   }
 
-  /** The receivers (CH 9 Network, CH 10 MoIP) in their own tab: which flow each one listens to. */
-  mountReceivers(el: HTMLElement): this {
+  /** The receivers (CH 9 Network, CH 10 MoIP) in their own tab: which flow each one listens to,
+   *  an eye on its ring (drawEye from the host), and a stream entered by hand (address : port,
+   *  or a pasted SDP). */
+  mountReceivers(el: HTMLElement, drawEye?: (canvas: HTMLCanvasElement, flowId: string) => void): this {
     this.rxEl = el;
     const rows = Object.keys(RECEIVERS).map((k) => {
       const idx = +k;
       const c = INPUTS[idx];
       return `<tr>
+        <td class="wr-rx-eye">${drawEye ? `<canvas width="120" height="120" data-rx-eye="${RECEIVERS[idx].flow}" aria-label="${c.name} ring"></canvas>` : ''}</td>
         <th class="wr-rx-name" scope="row"><span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span> ${c.name}</th>
-        <td><select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} flow"><option value="">Choose a stream…</option></select></td>
+        <td>
+          <select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} flow"><option value="">Choose a stream…</option></select>
+          <div class="wr-rx-custom" data-rx-custom="${idx}" hidden>
+            <span data-rx-ip-row><input type="text" class="wr-rx-in" data-rx-ip="${idx}" placeholder="239.1.2.3:5004" aria-label="${c.name} multicast address and port" spellcheck="false">
+              <select class="wr-rx-in" data-rx-ch="${idx}" aria-label="channels">${[1, 2, 4, 8, 16].map((n) => `<option value="${n}"${n === 2 ? ' selected' : ''}>${n} ch</option>`).join('')}</select>
+              <select class="wr-rx-in" data-rx-enc="${idx}" aria-label="encoding"><option>L24</option><option>L16</option></select></span>
+            <textarea class="wr-rx-in wr-rx-sdp" data-rx-sdp="${idx}" rows="6" placeholder="v=0&#10;o=- 1 1 IN IP4 192.168.1.10&#10;s=My stream&#10;c=IN IP4 239.1.2.3/32&#10;t=0 0&#10;m=audio 5004 RTP/AVP 96&#10;a=rtpmap:96 L24/48000/8&#10;a=ptime:1" aria-label="${c.name} SDP" spellcheck="false"></textarea>
+            <button type="button" class="wr-rx-go" data-rx-go="${idx}">Listen</button>
+          </div>
+        </td>
         <td class="wr-rx-addr" data-rx-addr="${idx}"></td>
         <td class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></td>
       </tr>`;
     }).join('');
     el.innerHTML = `<div class="wr-rack"><div class="wr-grid-card wr-rx-card">
       <table class="wr-rx-table" aria-label="Receivers: the flow each one listens to">
-        <thead><tr><th>RECEIVERS</th><th>flow</th><th>address</th><th>status</th></tr></thead>
+        <thead><tr><th></th><th>RECEIVERS</th><th>flow</th><th>address</th><th>status</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div></div>`;
     el.addEventListener('change', (e) => {
       const t = e.target as HTMLSelectElement;
-      if (t.dataset?.rxPick !== undefined) this.setReceiver(+t.dataset.rxPick, t.value);
+      if (t.dataset?.rxPick === undefined) return;
+      const idx = +t.dataset.rxPick;
+      const box = el.querySelector<HTMLElement>(`[data-rx-custom="${idx}"]`);
+      // "Address : port…" / "Paste an SDP…" open the entry under the picker
+      if (t.value === '__ip' || t.value === '__sdp') {
+        if (box) {
+          box.hidden = false;
+          box.querySelector<HTMLElement>('[data-rx-ip-row]')!.hidden = t.value !== '__ip';
+          box.querySelector<HTMLElement>('[data-rx-sdp]')!.hidden = t.value !== '__sdp';
+          box.querySelector<HTMLElement>(t.value === '__ip' ? '[data-rx-ip]' : '[data-rx-sdp]')?.focus();
+        }
+        return;
+      }
+      if (box) box.hidden = true;
+      this.setReceiver(idx, t.value);
     });
+    el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>('[data-rx-go]');
+      if (!b) return;
+      const idx = +b.dataset.rxGo!;
+      const box = el.querySelector<HTMLElement>(`[data-rx-custom="${idx}"]`)!;
+      const sdpBox = box.querySelector<HTMLTextAreaElement>('[data-rx-sdp]')!;
+      let ref = '';
+      if (!sdpBox.hidden) ref = sdpBox.value.trim();
+      else {
+        const ip = box.querySelector<HTMLInputElement>('[data-rx-ip]')!.value.trim();
+        const ch = box.querySelector<HTMLSelectElement>('[data-rx-ch]')!.value;
+        const enc = box.querySelector<HTMLSelectElement>('[data-rx-enc]')!.value;
+        if (!/^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/.test(ip)) { box.querySelector<HTMLInputElement>('[data-rx-ip]')!.setCustomValidity('address:port, e.g. 239.1.2.3:5004'); box.querySelector<HTMLInputElement>('[data-rx-ip]')!.reportValidity(); return; }
+        ref = `${ip}/${ch}ch/${enc}`;
+      }
+      if (!ref) return;
+      box.hidden = true;
+      this.rxKey = '';
+      this.setReceiver(idx, ref);
+    });
+    el.addEventListener('input', (e) => (e.target as HTMLInputElement).setCustomValidity?.(''));
+    if (drawEye) {
+      window.setInterval(() => {
+        if (el.offsetParent === null) return;
+        el.querySelectorAll<HTMLCanvasElement>('[data-rx-eye]').forEach((cv) => drawEye(cv, cv.dataset.rxEye!));
+      }, 100);
+    }
     this.rxKey = '';
     this.renderRx();
     return this;
@@ -351,9 +406,24 @@ export class WebRouter {
    */
   canRoute(row: number, col: number): boolean {
     if (!this.daemonOnline && (row >= IN_POD33 || col >= OUT_CUE)) return false;
+    if (this.feedback(row, col)) return false;
     if (col === OUT_POD33 || col === OUT_POD33_LOW) return isPod33Row(row);
     if (col === OUT_BITS) return row === IN_BITBUDDY;
     return true;
+  }
+
+  /**
+   * A source may go to any number of outputs, but never back into itself: a sound card
+   * input that is a monitor / loopback of the outputs cannot feed HW 1 / HW 2, and a received
+   * stream cannot go out again on the Repeater it may be coming from.
+   */
+  private feedback(row: number, col: number): boolean {
+    if (row === IN_SOUNDCARD && (col === OUT_SPEAKERS || col === OUT_CUE)) {
+      const label = this.scInputs.find((d) => d.id === this.scDevice)?.label ?? '';
+      if (/monitor of|loopback|ward-beck tap/i.test(label)) return true;
+    }
+    if (isRxRow(row) && col === OUT_REPEATER) return true;
+    return false;
   }
 
   /** The TAP went away: stop every generator, drop the routes it carried, back to tab / sound card. */
@@ -590,6 +660,43 @@ export class WebRouter {
     if (cue !== this.cueOn) { this.cueOn = cue; this.audio.setCue?.(cue); }
   }
 
+  /**
+   * After any route or generator change: check what the TAP is actually doing against what
+   * the router asked for, and re-send whatever did not take (twice: right away and once the
+   * TAP's workers have had time to start). The router's word wins here.
+   */
+  private kick(): void {
+    for (const t of this.kickTimers) clearTimeout(t);
+    this.kickTimers = [400, 1600].map((ms) => window.setTimeout(() => void this.reconcile(), ms));
+  }
+
+  private async reconcile(): Promise<void> {
+    if (this.daemonOnline) {
+      try {
+        const st = await fetch(`${this.daemonUrl}/api/bitbuddy`, { cache: 'no-store' }).then((r) => r.json());
+        const tone = st?.test_tone ?? {}, c = this.pod33Config;
+        const has = (k: string) => k in tone;
+        const toneWrong = !!tone.active !== this.pod33Engaged || (this.pod33Engaged && (
+          (has('freq') && tone.freq !== c.freq)
+          || (has('freq_r') && (tone.freq_r ?? null) !== (c.freqR ?? null))
+          || (has('level_db') && tone.level_db !== c.levelDb)
+          || (has('channel') && tone.channel !== c.channelMode)));
+        if (toneWrong) {
+          console.info('[router] POD-33 tone out of step with the TAP: re-sent');
+          this.post('/api/test_tone', { ...this.toneBody(), restart: this.pod33Engaged });
+        }
+        if (!!st?.active !== this.bitBuddyEngaged) {
+          console.info('[router] Bit Spitter out of step with the TAP: re-sent');
+          this.post('/api/bitbuddy', this.bitBuddyEngaged ? { ...this.bitBuddyPayload(), restart: true } : { active: false });
+        }
+        this.bbLocalAt = Date.now(); // the next poll does not undo this
+      } catch { /* the poll notices the TAP going away */ }
+    }
+    this.syncMonitor();
+    this.hintFlow();
+    this.refresh();
+  }
+
   private hintFlow(): void {
     const flow = this.bitBuddyEngaged && (this.activeInput === IN_BITBUDDY || !this.pod33Engaged)
       ? FLOW_BITS
@@ -605,6 +712,7 @@ export class WebRouter {
       this.matrix.forEach((r, i) => { r[col] = i === row; });
       this.refresh();
       this.onMeterInput?.(col + 1, row);
+      this.kick();
       return;
     }
     // Exclusive 1:1 routing: an output takes one input. Clicking the lit crosspoint
@@ -614,6 +722,7 @@ export class WebRouter {
     if (col === OUT_CUE && this.matrix[row][col]) this.outMutes[OUT_CUE] = false;
     if (col === OUT_SPEAKERS || col === OUT_CUE) this.syncMonitor(); // the crosspoint is the mute
     this.refresh();
+    this.kick();
   }
 
   /** Exclusive 1:1: putting `row` on output `col` takes every other input off it. */
@@ -645,11 +754,12 @@ export class WebRouter {
     else if (audio) {
       if (idx === IN_SOUNDCARD) audio.connectSoundCard(this.scDevice || null);
       else if (idx === 1) audio.connectSystemAudio('browser');
-      else if (idx === 4) audio.startTestGenerator('pink');
+      else if (idx === IN_BITBUDDY + 1) audio.startTestGenerator('pink'); // CH 8 Pink / Sweep
     }
     this.syncMonitor();
     this.hintFlow();
     this.refresh();
+    this.kick();
   }
 
   private scWatch = false;
@@ -677,6 +787,8 @@ export class WebRouter {
     this.scDevice = deviceId;
     this.scDenied = false;
     try { localStorage.setItem('wr.scDevice', deviceId); } catch { /* ignore */ }
+    // A loopback / monitor input loses its routes to the outputs (no feedback)
+    this.matrix.forEach((r, i) => r.forEach((on, c) => { if (on && !this.canRoute(i, c)) r[c] = false; }));
     this.selectInput(IN_SOUNDCARD);
     void this.loadSoundCards(); // names appear once the browser has been allowed the input
   }
@@ -706,7 +818,8 @@ export class WebRouter {
       if (this.activeInput === idx) { this.onPlayFlow?.(rx.flow); this.onFlowHint?.(rx.flow); }
       return;
     }
-    const name = this.rxStreams.find((s) => s.id === ref)?.name ?? ref;
+    const name = this.rxStreams.find((s) => s.id === ref)?.name
+      ?? (ref.startsWith('v=') ? /^s=(.*)$/m.exec(ref)?.[1]?.trim() || 'custom SDP' : ref.split('/')[0]);
     this.rxStatus[idx] = { active: true, status: 'starting', ref };
     this.renderRx();
     fetch(`${this.daemonUrl}/api/receiver`, {
@@ -731,9 +844,11 @@ export class WebRouter {
       if (sel && fresh && document.activeElement !== sel) {
         const known = this.rxStreams.some((s) => s.id === cur);
         const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+        const custom = (r: string) => (r.startsWith('v=') ? `Custom SDP (${/^s=(.*)$/m.exec(r)?.[1]?.trim() || 'pasted'})` : /^\d+\.\d+\.\d+\.\d+:\d+/.test(r) ? r.replace(/\//g, ' · ') : `${r} (not heard)`);
         sel.innerHTML = `<option value="">${this.rxStreams.length ? 'Choose a stream…' : 'No streams announced'}</option>`
-          + (cur && !known ? `<option value="${esc(cur)}">${esc(cur)} (not heard)</option>` : '')
-          + this.rxStreams.map((s) => `<option value="${esc(s.id)}" title="${esc(s.addr)}">${esc(s.name)}</option>`).join('');
+          + (cur && !known ? `<option value="${esc(cur)}">${esc(custom(cur))}</option>` : '')
+          + this.rxStreams.map((s) => `<option value="${esc(s.id)}" title="${esc(s.addr)}">${esc(s.name)}</option>`).join('')
+          + `<option value="__ip">Address : port…</option><option value="__sdp">Paste an SDP…</option>`;
         sel.value = cur;
       }
       const st = this.rxStatus[idx];
@@ -795,6 +910,7 @@ export class WebRouter {
     this.applyPod33(on, false);
     this.post('/api/test_tone', { ...this.toneBody(), restart: on });
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
+    this.kick();
   }
 
   /** Local POD-33 state (route + browser generator), without telling the daemon. */
@@ -811,6 +927,7 @@ export class WebRouter {
     this.bbLocalAt = Date.now();
     this.post('/api/bitbuddy', on ? this.bitBuddyPayload() : { active: false });
     this.applyBitBuddy(on, sync);
+    this.kick();
   }
 
   /** Local state for the shared Bit Buddy; sound comes from the browser only when the daemon is away. */

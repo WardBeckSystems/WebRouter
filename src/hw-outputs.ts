@@ -117,6 +117,8 @@ export class HwOutputs {
         </th>
         ${st.outputs.map((o) => {
           const l = linked(s.name, o.name);
+          // A sound card never receives itself (that is a feedback loop): no crosspoint
+          if (s.kind === 'input' && s.card && s.card === o.card) return '<td class="wr-td-crosspoint"></td>';
           return `<td class="wr-td-crosspoint"><button type="button" class="wr-matrix-btn${l ? ' connected' : ''}"
             data-hw-src="${esc(s.name)}" data-hw-sink="${esc(o.name)}"
             title="${esc(s.label)} → ${esc((o.card_name ? cardName(o, st.outputs) : shortOut(o)))}${l?.tap ? ' (TAP speaker leg)' : ''}"

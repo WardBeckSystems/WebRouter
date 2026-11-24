@@ -1640,3 +1640,16 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-hw-bar { display: inline-flex; flex-direction: column; gap: 2px; width: 60px; margin-left: 8px; vertical-align: middle; }
 .wr-hw-bar i { display: block; height: 3px; width: 0; background: #22c55e; border-radius: 1px; transition: width 40ms linear; }
 .wr-hw-bar i.hot { background: #ef4444; }
+
+/* Receivers tab: an eye per receiver, and a stream entered by hand */
+.wr-rx-eye { width: 128px; padding: 4px 8px 4px 0 !important; }
+.wr-rx-eye canvas { width: 120px; height: 120px; display: block; }
+.wr-rx-custom { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: flex-start; }
+.wr-rx-custom [data-rx-ip-row] { display: inline-flex; gap: 6px; }
+.wr-rx-custom [hidden] { display: none !important; }
+.wr-rx-in { font: 600 0.72rem ui-monospace, monospace; padding: 3px 6px; border: 1px solid currentColor; border-radius: 3px; background: transparent; color: inherit; }
+.wr-rx-in[data-rx-ip] { width: 170px; }
+.wr-rx-sdp { width: 420px; max-width: 100%; white-space: pre; resize: vertical; }
+.wr-rx-go { font: 800 0.7rem ui-monospace, monospace; padding: 4px 12px; border-radius: 3px; border: 1px solid #ea580c; background: #ea580c; color: #fff; cursor: pointer; }
+.wr-rx-table td, .wr-rx-table tbody th { vertical-align: middle; }
+.wr-rx-custom[hidden] { display: none; }
