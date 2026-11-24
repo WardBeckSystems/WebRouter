@@ -800,8 +800,33 @@ export class WebRouter {
     return {
       active: true, pattern: b.pattern, pro_mode: b.proMode, audio_data: b.audioData === 'audio', sample_rate: b.sampleRate,
       level_db: b.level, tone_hz: b.tone, ext: b.ext, ch_b: b.bOff ? 'off' : b.invert ? (b.cycle ? 'cycle_invert' : 'invert') : b.cycle ? 'cycle' : 'on',
-      validity: b.invalid,
+      validity: b.invalid, fault: b.fault ?? 'clean', ext_locked: this.extRefLocked,
     };
+  }
+
+  /**
+   * The Bit Spitter's looped file (WAV / MP3, decoded by the page): sent to the TAP as
+   * 16-bit stereo so it plays there too, then selected as the source.
+   */
+  async setBitBuddyFile(name: string, l: Float32Array, r: Float32Array, rate: number): Promise<boolean> {
+    let ok = true;
+    if (this.daemonOnline) {
+      const pcm = new Int16Array(l.length * 2);
+      for (let i = 0; i < l.length; i++) {
+        pcm[2 * i] = Math.max(-32768, Math.min(32767, Math.round(l[i] * 32767)));
+        pcm[2 * i + 1] = Math.max(-32768, Math.min(32767, Math.round(r[i] * 32767)));
+      }
+      const bytes = new Uint8Array(pcm.buffer);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      ok = await fetch(`${this.daemonUrl}/api/bitbuddy/file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, rate, pcm_b64: btoa(bin) }),
+      }).then((res) => res.ok, () => false);
+    }
+    this.setBitBuddyConfig({ pattern: 'file', fileName: name });
+    return ok;
   }
 
   /**
@@ -819,7 +844,10 @@ export class WebRouter {
   }
 
   private restartSpitterIfExt(): void {
-    if (this.bitBuddyEngaged && this.bitBuddyConfig.ext && !this.daemonOnline) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
+    if (!this.bitBuddyEngaged || !this.bitBuddyConfig.ext) return;
+    // EXT follows the POD-33 reference: the TAP or the browser re-locks (or mutes)
+    if (this.daemonOnline) this.post('/api/bitbuddy', { ...this.bitBuddyPayload(), restart: true });
+    else this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
   }
 
   /** Play POD-33 output n (0-3): its own frequency, level and channel, the unit's reference. */

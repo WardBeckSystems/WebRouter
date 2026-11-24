@@ -9,7 +9,8 @@ export interface Pod33Config {
 }
 
 export interface BitBuddyConfig {
-  pattern: 'tone' | 'walk1s' | 'prbs' | 'minmax';
+  /** Source: tone, noise, test patterns or a looped WAV / MP3 file. */
+  pattern: 'tone' | 'pink' | 'white' | 'brown' | 'walk1s' | 'prbs' | 'minmax' | 'file';
   sampleRate: 48000 | 44100 | 32000 | 96000;
   proMode: boolean;            // true = Professional AES3, false = Consumer S/PDIF
   audioData: 'audio' | 'data'; // PCM audio or non-audio bitstream
@@ -21,6 +22,10 @@ export interface BitBuddyConfig {
   invert: boolean;             // CHB INVERT: channel B out of phase
   bOff: boolean;               // CHB OFF: channel B muted
   invalid: boolean;            // INVALID: validity bit set on the AES stream
+  /** A fault on the AES3 line (what the receiver hears). */
+  fault: 'clean' | 'noise' | 'badeq' | 'jitter' | 'drop' | 'slip' | 'biphase' | 'noclock';
+  /** The looped file's name (pattern 'file'). */
+  fileName?: string;
 }
 
 export const DEFAULT_POD33_CONFIG: Pod33Config = {
@@ -42,6 +47,7 @@ export const DEFAULT_BITBUDDY_CONFIG: BitBuddyConfig = {
   invert: false,
   bOff: false,
   invalid: false,
+  fault: 'clean',
 };
 
 /** What the user shared through getDisplayMedia (CH 2). */
