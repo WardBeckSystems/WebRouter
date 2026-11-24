@@ -490,23 +490,8 @@
   box-shadow: none;
 }
 
-.wr-matrix-presets {
-  display: flex;
-  gap: 6px;
-}
 
-.wr-btn-preset {
-  padding: 3px 8px;
-  background: #0d1e30;
-  border: 1px solid #224c75;
-  color: #cbd5e1;
-  border-radius: 3px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  cursor: pointer;
-}
 
-.wr-btn-preset:hover { background: #173759; color: #fff; }
 
 .wr-matrix-table-wrap {
   overflow-x: auto;
@@ -736,16 +721,7 @@ body.theme-mccurdy-dark .wr-matrix-header {
   border-bottom-color: #223444;
 }
 
-body.theme-mccurdy-dark .wr-btn-preset {
-  background: #1c2b38;
-  border-color: #2f475b;
-  color: #cbd5e1;
-}
 
-body.theme-mccurdy-dark .wr-btn-preset:hover {
-  background: #284055;
-  color: #fff;
-}
 
 body.theme-mccurdy-dark .wr-matrix-table th {
   background: #182633;
@@ -1435,3 +1411,120 @@ body.theme-wbs-dark .wr-meter-hub {
 
 /* Channel tags are colour-coded pills in every theme. */
 .wr-rack .wr-strip-tag[class*="wr-pill-"] { color: #fff; }
+
+/* CH 2 — shared browser tab: origin · format · live level */
+.wr-strip-info {
+  font-family: monospace;
+  font-size: 0.62rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 2px 0 0;
+}
+body.theme-mccurdy .wr-strip-info,
+body.theme-mccurdy-light .wr-strip-info { color: #475569; }
+
+/* ==================================================================
+   Combined grid: input strips are the row headers, crosspoints are the
+   mutes, output strips (name · VU · level · -20 dB) run along the
+   bottom row.
+   ================================================================== */
+.wr-grid-card { overflow-x: auto; }
+.wr-grid { table-layout: fixed; min-width: 980px; }
+.wr-grid th, .wr-grid td { vertical-align: middle; }
+.wr-grid col, .wr-grid .wr-grid-corner, .wr-grid .wr-grid-in { width: 230px; }
+.wr-grid-corner { text-align: left !important; font-size: 0.66rem; letter-spacing: 1px; color: #38bdf8 !important; }
+.wr-grid-corner .wr-th-sub { display: block; letter-spacing: 0; text-transform: none; }
+.wr-grid-out-head { padding: 4px 2px !important; }
+.wr-grid-out-head .wr-strip-tag { display: inline-block; margin-bottom: 2px; }
+.wr-grid-out-head .wr-th-sub { display: block; font-size: 0.66rem; font-weight: 700; color: inherit; }
+.wr-grid .wr-grid-in { padding: 3px 6px 3px 0 !important; text-align: left; font-weight: normal; border-bottom: 1px solid #11253a; }
+.wr-grid-in-body { display: flex; align-items: center; gap: 6px; }
+.wr-grid-in-body .wr-theme-meters-wrap { flex: 1; min-width: 0; margin: 2px 0; }
+.wr-grid-in-body .wr-btn-engage { flex: none; padding: 3px 6px; font-size: 0.6rem; }
+.wr-grid tbody tr.live .wr-td-crosspoint { background: rgba(249, 115, 22, 0.06); }
+.wr-grid tfoot td, .wr-grid tfoot th { padding: 6px 3px 2px !important; border-top: 2px solid #1a3654; }
+.wr-grid-out .wr-strip { padding: 4px; }
+.wr-grid-out .wr-strip-name { font-size: 0.64rem; text-align: center; white-space: normal; line-height: 1.15; }
+.wr-grid-out .wr-theme-meter-svg { height: 30px; }
+.wr-out-foot { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.wr-out-foot .wr-btn-dim { padding: 2px 5px; font-size: 0.58rem; }
+.wr-grid-out .wr-strip.selected { border-color: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.3); }
+.wr-grid .wr-td-crosspoint { padding: 2px; }
+.wr-grid .wr-theme-meter-svg { width: 100%; }
+.wr-grid-in-body .wr-btn-engage { width: auto !important; flex: 0 0 auto; }
+.wr-grid-in-body .wr-theme-meters-wrap { flex: 1 1 auto; }
+.wr-out-foot .wr-btn-dim { width: auto !important; flex: 0 0 auto; }
+
+/* Bigger, plainer meters: full-width pair, no readouts; buttons ride in the title row. */
+.wr-grid .wr-theme-meters-wrap { margin: 4px 0 0; }
+.wr-grid .wr-theme-meter-svg,
+.wr-grid-out .wr-theme-meter-svg { width: 100%; height: auto; }
+.wr-grid .wr-strip-top { display: flex; align-items: center; gap: 6px; }
+.wr-grid .wr-strip-top .wr-btn-engage,
+.wr-grid .wr-strip-top .wr-btn-dim { flex: none; width: auto !important; margin: 0 0 0 auto; padding: 2px 6px; font-size: 0.6rem; }
+.wr-grid col, .wr-grid .wr-grid-corner, .wr-grid .wr-grid-in { width: 260px; }
+.wr-grid-out .wr-strip-name { text-align: left; }
+
+
+/* Stacked stereo VU: one face, L needle black, R needle red.
+   On the dark default face "black" would vanish, so L is white there. */
+.wr-meter-needle.wr-meter-needle-l,
+body.theme-wbs-dark .wr-meter-needle.wr-meter-needle-l { stroke: #f1f5f9; stroke-width: 1.4; }
+.wr-meter-needle.wr-meter-needle-r,
+body.theme-wbs-dark .wr-meter-needle.wr-meter-needle-r { stroke: #ef4444; stroke-width: 1.4; }
+body.theme-wbs-ca .wr-meter-needle.wr-meter-needle-l,
+body.theme-mccurdy .wr-meter-needle.wr-meter-needle-l,
+body.theme-mccurdy-light .wr-meter-needle.wr-meter-needle-l,
+body.theme-mccurdy-dark .wr-meter-needle.wr-meter-needle-l { stroke: #111111; }
+body.theme-wbs-ca .wr-meter-needle.wr-meter-needle-r,
+body.theme-mccurdy .wr-meter-needle.wr-meter-needle-r,
+body.theme-mccurdy-light .wr-meter-needle.wr-meter-needle-r,
+body.theme-mccurdy-dark .wr-meter-needle.wr-meter-needle-r { stroke: #dc2626; }
+.wr-grid thead .wr-grid-out { vertical-align: top; border-bottom: 2px solid #1a3654; }
+.wr-strip-info:empty { display: none; }
+
+/* Compact router: meters capped in height (they used to scale with the column width),
+   a narrower input column and tight rows, so all inputs fit on one screen. */
+.wr-grid .wr-theme-meter-svg,
+.wr-grid-out .wr-theme-meter-svg { height: 52px; width: 100%; }
+.wr-grid col, .wr-grid .wr-grid-corner, .wr-grid .wr-grid-in { width: 190px; }
+.wr-grid .wr-grid-in { padding: 2px 6px 2px 0 !important; }
+.wr-grid .wr-strip { padding: 3px 5px; }
+.wr-grid .wr-theme-meters-wrap { margin: 2px 0 0; }
+.wr-grid-out-head { padding: 2px !important; }
+.wr-grid .wr-td-crosspoint { padding: 1px; }
+.wr-grid .wr-matrix-btn { width: 24px; height: 24px; }
+.wr-grid .wr-matrix-led { width: 8px; height: 8px; }
+.wr-rack { padding: 8px; }
+.wr-rack-header { padding-bottom: 4px; margin-bottom: 6px; }
+
+/* Input row header on one line: tag · name · ENGAGE on the left, VU to the right. */
+.wr-grid col, .wr-grid .wr-grid-corner, .wr-grid .wr-grid-in { width: 250px; }
+.wr-grid .wr-in-strip { display: grid; grid-template-columns: minmax(0, 1fr) 72px; column-gap: 6px; align-items: center; }
+.wr-grid .wr-in-strip .wr-strip-top { grid-column: 1; flex-wrap: wrap; row-gap: 3px; }
+.wr-grid .wr-in-strip .wr-strip-top .wr-btn-engage { margin: 0; }
+.wr-grid .wr-in-strip .wr-strip-name { flex: 1 1 100%; order: 2; white-space: normal; line-height: 1.15; }
+.wr-grid .wr-in-strip .wr-strip-tag { order: 1; }
+.wr-grid .wr-in-strip .wr-btn-engage { order: 1; }
+.wr-grid .wr-in-strip .wr-strip-info { grid-column: 1; }
+.wr-grid .wr-in-strip .wr-theme-meters-wrap { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
+.wr-grid .wr-in-strip .wr-theme-meter-svg { height: 44px; }
+
+/* Destination kinds: meters, sound card outputs, MXL flows written to /dev/shm */
+.wr-rack .wr-pill-mtr { background: #334155; color: #fff; }
+.wr-rack .wr-pill-hw { background: #0f766e; color: #fff; }
+.wr-rack .wr-pill-mxl { background: #9a3412; color: #fff; }
+/* MXL 3: the name is the 400 / 100 Hz switch */
+.wr-rack .wr-btn-hz { background: none; border: 0; padding: 0; cursor: pointer; text-align: left; font: inherit; font-weight: 700; color: inherit; text-decoration: underline dotted; }
+
+/* Speaker level fader under the HW 1 meter (shared with Settings → Monitor Volume) */
+.wr-level { display: block; width: 100%; margin: 4px 0 0; accent-color: var(--wr-accent, #ea580c); cursor: pointer; }
+body.theme-mccurdy-dark .wr-level { accent-color: #f59e0b; }
+body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color: #1e3a5f; }
+/* MXL transmitter columns: tag and name open the transmitter */
+.wr-rack .wr-btn-open-flow { border: 0; cursor: pointer; font: inherit; }
+.wr-rack button.wr-strip-name.wr-btn-open-flow { background: none; padding: 0; text-align: left; font-weight: 700; color: inherit; }
+.wr-rack .wr-btn-open-flow:hover { text-decoration: underline; }
+.wr-rack .wr-btn-hz { white-space: nowrap; }

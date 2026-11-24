@@ -1,47 +1,18 @@
 /*! Copyright (c) 2026 Ward-Beck Systems (Ward-Beck.ca). All rights reserved. */
-/** Miniature stereo broadcast VU meter pair (SVG) used on every router strip. */
+/**
+ * Stereo broadcast VU meter (SVG) used on every router strip.
+ * One face, one scale, two needles on the same pivot: L is black, R is red.
+ * No scale numbers, channel letters or VU legend.
+ */
 
-/** One meter face. cx is the needle pivot x; the pair sits at x offsets 0 and 102. */
-function meterFace(id: string, ch: 'L' | 'R', dx: number): string {
-  const x = (v: number) => (v + dx).toFixed(1);
-  return `
-    <g class="wr-meter-subgroup">
-      <rect x="${x(2)}" y="2" width="94" height="40" rx="3" class="wr-meter-bezel" />
-      <rect x="${x(4)}" y="4" width="90" height="36" rx="2" class="wr-meter-face" />
-      <text x="${x(8)}" y="13" class="wr-meter-ch-lbl">${ch}</text>
-      <text x="${x(49)}" y="37" class="wr-meter-vu-lbl" text-anchor="middle">VU</text>
-      <path d="M ${x(28.9)} 19.7 A 30 30 0 0 1 ${x(57.3)} 13.2" class="wr-meter-arc-norm" />
-      <path d="M ${x(57.3)} 13.2 A 30 30 0 0 1 ${x(69.1)} 19.7" class="wr-meter-arc-over" />
-      <line x1="${x(32.5)}" y1="19.3" x2="${x(30.2)}" y2="16.1" class="wr-meter-tick" />
-      <line x1="${x(37.6)}" y1="16.4" x2="${x(36.0)}" y2="12.8" class="wr-meter-tick" />
-      <line x1="${x(41.3)}" y1="15.1" x2="${x(40.2)}" y2="11.2" class="wr-meter-tick" />
-      <line x1="${x(49.0)}" y1="14.0" x2="${x(49.0)}" y2="10.0" class="wr-meter-tick" />
-      <line x1="${x(56.7)}" y1="15.1" x2="${x(57.8)}" y2="11.2" class="wr-meter-tick-red" />
-      <line x1="${x(67.7)}" y1="21.2" x2="${x(70.4)}" y2="18.2" class="wr-meter-tick-red" />
-      <text x="${x(27)}" y="25" class="wr-meter-tick-lbl" text-anchor="middle">-20</text>
-      <text x="${x(49)}" y="8.5" class="wr-meter-tick-lbl" text-anchor="middle">-3</text>
-      <text x="${x(58.5)}" y="9.5" class="wr-meter-tick-lbl-red" text-anchor="middle">0</text>
-      <text x="${x(73)}" y="25" class="wr-meter-tick-lbl-red" text-anchor="middle">+3</text>
-      <g id="${id}" class="wr-needle-group" transform="rotate(-42 ${x(49)} 42)">
-        <line x1="${x(49)}" y1="42" x2="${x(49)}" y2="13" class="wr-meter-needle" />
-        <circle cx="${x(49)}" cy="42" r="2.5" class="wr-meter-hub" />
-      </g>
-    </g>`;
-}
+/** Needle pivot x for the L and R needles (they share one face), and pivot y. */
+export const PIVOT_L = 50;
+export const PIVOT_R = 50;
+export const PIVOT_Y = 53;
 
-/** Needle pivot x for the left and right faces. */
-export const PIVOT_L = 49;
-export const PIVOT_R = 151;
-
-export function renderMeterPair(prefix: string, idx: number): string {
-  return `
-    <div class="wr-theme-meters-wrap">
-      <svg class="wr-theme-meter-svg" viewBox="0 0 200 44" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        ${meterFace(`${prefix}NeedleL${idx}`, 'L', 0)}
-        ${meterFace(`${prefix}NeedleR${idx}`, 'R', 102)}
-      </svg>
-    </div>`;
-}
+const ARC_R = 40;      // scale arc radius
+const NEEDLE = 45;     // needle length
+const TICKS = [-20, -10, -5, 0, 3];
 
 /** dB → needle angle (−42° rest … +42° full scale), VU law referenced to +3. */
 export function vuDbToAngle(db: number): number {
@@ -51,3 +22,39 @@ export function vuDbToAngle(db: number): number {
 }
 
 export const clampDb = (db: number): number => Math.max(-60, Math.min(3, isFinite(db) ? db : -60));
+
+/** Point on a circle around the pivot at angle a (degrees from vertical). */
+function polar(cx: number, r: number, a: number): string {
+  const t = (a * Math.PI) / 180;
+  return `${(cx + r * Math.sin(t)).toFixed(1)} ${(PIVOT_Y - r * Math.cos(t)).toFixed(1)}`;
+}
+
+function meterFace(idL: string, idR: string, cx: number): string {
+  const a20 = vuDbToAngle(-20), a0 = vuDbToAngle(0), a3 = vuDbToAngle(3);
+  const ticks = TICKS.map((db) => {
+    const a = vuDbToAngle(db);
+    return `<path d="M ${polar(cx, ARC_R, a)} L ${polar(cx, ARC_R + 5, a)}" class="${db >= 0 ? 'wr-meter-tick-red' : 'wr-meter-tick'}" />`;
+  }).join('');
+  const needle = (id: string, ch: 'l' | 'r') => `
+      <g id="${id}" class="wr-needle-group" transform="rotate(-42 ${cx} ${PIVOT_Y})">
+        <line x1="${cx}" y1="${PIVOT_Y}" x2="${cx}" y2="${PIVOT_Y - NEEDLE}" class="wr-meter-needle wr-meter-needle-${ch}" />
+      </g>`;
+  return `
+    <g class="wr-meter-subgroup">
+      <rect x="${cx - 47}" y="1" width="94" height="58" rx="4" class="wr-meter-bezel" />
+      <rect x="${cx - 45}" y="3" width="90" height="54" rx="3" class="wr-meter-face" />
+      <path d="M ${polar(cx, ARC_R, a20)} A ${ARC_R} ${ARC_R} 0 0 1 ${polar(cx, ARC_R, a0)}" class="wr-meter-arc-norm" />
+      <path d="M ${polar(cx, ARC_R, a0)} A ${ARC_R} ${ARC_R} 0 0 1 ${polar(cx, ARC_R, a3)}" class="wr-meter-arc-over" />
+      ${ticks}${needle(idR, 'r')}${needle(idL, 'l')}
+      <circle cx="${cx}" cy="${PIVOT_Y}" r="3" class="wr-meter-hub" />
+    </g>`;
+}
+
+export function renderMeterPair(prefix: string, idx: number): string {
+  return `
+    <div class="wr-theme-meters-wrap" title="L black · R red">
+      <svg class="wr-theme-meter-svg" viewBox="0 0 100 60" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        ${meterFace(`${prefix}NeedleL${idx}`, `${prefix}NeedleR${idx}`, PIVOT_L)}
+      </svg>
+    </div>`;
+}

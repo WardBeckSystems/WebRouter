@@ -44,6 +44,20 @@ export const DEFAULT_BITBUDDY_CONFIG: BitBuddyConfig = {
   invalid: false,
 };
 
+/** What the user shared through getDisplayMedia (CH 2). */
+export interface BrowserTabInfo {
+  title: string;            // tab / window title, or a fallback when the browser hides it
+  surface: string;          // 'browser' (tab) | 'window' | 'monitor'
+  origin?: string;          // tab origin via Capture Handle, when the page exposes it
+  audioLabel?: string;
+  sampleRate?: number;
+  channelCount?: number;
+  width?: number;
+  height?: number;
+  startedAt: number;
+  live: boolean;
+}
+
 /** The audio engine surface the router drives. Any engine with these methods works. */
 export interface WebRouterAudio {
   ctx?: { state: string; resume(): Promise<void> } | null;
@@ -56,6 +70,10 @@ export interface WebRouterAudio {
   startBitBuddyGenerator(config: BitBuddyConfig): void;
   stopBitBuddyGenerator(): void;
   startTestGenerator(type: string): void;
+  /** Current meter source kind; 'mxl' means an MXL flow (picked outside the router) owns the meters. */
+  sourceType?: string;
+  /** The shared tab / window behind CH 2, if any. */
+  tabInfo?: BrowserTabInfo | null;
 }
 
 /** Per-frame meter levels (dB per channel, L then R). */
@@ -71,6 +89,13 @@ export interface WebRouterOptions {
   daemonUrl?: string;
   /** Called when the router wants a different MXL flow shown (e.g. POD-33 engaged → ref tone flow). */
   onFlowHint?: (flowId: string) => void;
+  /** Clicking an MXL transmitter column opens that flow (XTM: the MXL transmitters tab). */
+  onOpenFlow?: (flowId: string) => void;
+  /**
+   * A crosspoint on a Meter Input column was made: router input `input` now feeds the
+   * meter's INPUT button `meter` (1-4). XTM: assigns that button and plays it.
+   */
+  onMeterInput?: (meter: number, input: number) => void;
 }
 
 export interface RouterChannel {
