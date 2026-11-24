@@ -387,27 +387,28 @@ export class WebRouter {
       <th class="wr-grid-in" scope="row">
         <div class="wr-strip wr-in-strip" id="wrInStrip${idx}" data-in-idx="${idx}" title="${c.name} — ${c.sub}\nAlways listening: its meter shows the source. Click to play it.">
           <div class="wr-strip-top">
-            <span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>
+            ${this.art ? '' : `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`}
             <span class="wr-strip-name" id="wrInName${idx}">${c.name}</span>
           </div>
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
           ${idx === IN_SOUNDCARD ? `<select class="wr-rx-pick" data-sc-pick aria-label="${c.name} device"><option value="">Default input</option></select>` : ''}
           ${isRxRow(idx) ? `<select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} stream"><option value="">Choose a stream…</option></select>
           <div class="wr-strip-info wr-rx-info" id="wrRxInfo${idx}"></div>` : ''}
-          ${this.meterPair('wrIn', idx)}
+          ${this.meterPair('wrIn', idx, `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`)}
         </div>
       </th>${cells}</tr>`;
   }
 
   /** Column head: each output's tag, name, -20 dB dim and its VU meter, above its crosspoints. */
   private renderOutputCell(c: RouterChannel, idx: number): string {
+    const tag = c.pill === 'mxl'
+      ? `<button type="button" class="wr-strip-tag wr-pill-mxl wr-btn-open-flow" data-open-flow="${idx}" title="Open the ${c.name} MXL transmitter">${c.tag}</button>`
+      : `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`;
     return `
       <th class="wr-grid-out-head wr-grid-out" scope="col">
         <div class="wr-strip wr-out-strip" id="wrOutStrip${idx}" title="${c.name} — ${c.sub}">
           <div class="wr-strip-top">
-            ${c.pill === 'mxl'
-              ? `<button type="button" class="wr-strip-tag wr-pill-mxl wr-btn-open-flow" data-open-flow="${idx}" title="Open the ${c.name} MXL transmitter">${c.tag}</button>`
-              : `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`}
+            ${this.art ? '' : tag}
             ${idx === OUT_POD33_LOW
               ? `<button type="button" class="wr-strip-name wr-btn-hz" data-low-hz="1" id="wrLowHz" title="Switch POD-33 400 Hz / 100 Hz">${this.pod33LowHz} Hz</button>`
               : c.pill === 'mxl'
@@ -415,7 +416,7 @@ export class WebRouter {
                 : `<span class="wr-strip-name">${SHORT_OUT[idx]}</span>`}
             ${c.pill === 'hw' ? `<button type="button" class="wr-btn-out-tool wr-btn-dim" data-out-dim="${idx}" title="Dim ${c.name} by 20 dB">-20dB</button>` : ''}
           </div>
-          ${this.meterPair('wrOut', idx)}
+          ${this.meterPair('wrOut', idx, tag)}
           ${idx === OUT_SPEAKERS ? `<input type="range" class="wr-level" data-out-level="${idx}" min="0" max="1" step="0.01" value="${this.speakerLevel}" title="Speaker level" aria-label="Speaker level">` : ''}
         </div>
       </th>`;
@@ -429,8 +430,9 @@ export class WebRouter {
     this.container.querySelectorAll('.wr-art-slot').forEach((slot) => slot.replaceChildren(...(t ? [t.tpl.cloneNode(true)] : [])));
   }
 
-  private meterPair(prefix: string, idx: number): string {
-    return this.art ? renderArtMeterPair(prefix, idx, this.art) : renderMeterPair(prefix, idx);
+  /** The strip's meter; with the console's meter art the channel ID sits on its black bezel. */
+  private meterPair(prefix: string, idx: number, tag = ''): string {
+    return this.art ? renderArtMeterPair(prefix, idx, this.art, tag) : renderMeterPair(prefix, idx);
   }
 
   // ───────────────────────────── events ─────────────────────────────

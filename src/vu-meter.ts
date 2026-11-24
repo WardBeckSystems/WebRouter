@@ -80,7 +80,7 @@ export interface MeterArt {
 }
 
 /** The host's meter in miniature, with this strip's two needles (L black, R red). */
-export function renderArtMeterPair(prefix: string, idx: number, art: MeterArt): string {
+export function renderArtMeterPair(prefix: string, idx: number, art: MeterArt, overlay = ''): string {
   const [bx, by, bw, bh] = art.box;
   const [px, py] = art.pivot;
   const [wx, wy, ww, wh, wr] = art.window;
@@ -97,6 +97,7 @@ export function renderArtMeterPair(prefix: string, idx: number, art: MeterArt): 
         <g class="wr-art-slot" pointer-events="none"></g>
         <g clip-path="url(#${clip})">${needle(`${prefix}NeedleR${idx}`, 'r')}${needle(`${prefix}NeedleL${idx}`, 'l')}</g>
       </svg>
+      ${overlay ? `<div class="wr-art-tag">${overlay}</div>` : ''}
     </div>`;
 }
 
