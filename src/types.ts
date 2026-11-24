@@ -3,6 +3,8 @@
 
 export interface Pod33Config {
   freq: number;            // 100, 400, 1000, 0 (silence)
+  /** Split tone: the right channel's own frequency (e.g. 1 kHz left / 4 kHz right); null = same as left. */
+  freqR?: number | null;
   levelDb: number;         // 0 … -40, -100 = off
   refClock: 'video' | 'aes' | 'int48' | 'int96';
   channelMode: 'stereo' | 'left' | 'right' | 'invert';

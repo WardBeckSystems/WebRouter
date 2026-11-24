@@ -186,7 +186,7 @@ export class WebRouter {
    * channel / phase; the reference lock is the unit's, shared. pod33Config is the output
    * being played (pod33Out).
    */
-  pod33Outputs: Pick<Pod33Config, 'freq' | 'levelDb' | 'channelMode'>[] = Array.from({ length: POD33_OUTS }, () => ({
+  pod33Outputs: Pick<Pod33Config, 'freq' | 'freqR' | 'levelDb' | 'channelMode'>[] = Array.from({ length: POD33_OUTS }, () => ({
     freq: DEFAULT_POD33_CONFIG.freq, levelDb: DEFAULT_POD33_CONFIG.levelDb, channelMode: DEFAULT_POD33_CONFIG.channelMode,
   }));
   pod33Out = 0;
@@ -766,7 +766,7 @@ export class WebRouter {
   setPod33(on: boolean, sync = true): void {
     this.bbLocalAt = Date.now();
     this.applyPod33(on, false);
-    this.post('/api/test_tone', { freq: this.pod33Config.freq, restart: on });
+    this.post('/api/test_tone', { ...this.toneBody(), restart: on });
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
   }
 
@@ -856,14 +856,20 @@ export class WebRouter {
     Object.assign(this.pod33Config, this.pod33Outputs[this.pod33Out]);
   }
 
+  /** The output being played, as the TAP's /api/test_tone takes it. */
+  private toneBody() {
+    const c = this.pod33Config;
+    return { freq: c.freq, freq_r: c.freqR ?? null, level_db: c.levelDb, channel: c.channelMode };
+  }
+
   /** Update one POD-33 output (0-3); the one playing restarts with it. */
-  setPod33Output(n: number, patch: Partial<Pick<Pod33Config, 'freq' | 'levelDb' | 'channelMode'>>): void {
+  setPod33Output(n: number, patch: Partial<Pick<Pod33Config, 'freq' | 'freqR' | 'levelDb' | 'channelMode'>>): void {
     const out = this.pod33Outputs[n];
     if (!out) return;
     Object.assign(out, patch);
     if (n === this.pod33Out) {
       this.setPod33Config(patch);
-      if (this.pod33Engaged && patch.freq !== undefined) this.post('/api/test_tone', { freq: out.freq, restart: true });
+      if (this.pod33Engaged) this.post('/api/test_tone', { ...this.toneBody(), restart: true });
     } else this.refresh();
   }
 
