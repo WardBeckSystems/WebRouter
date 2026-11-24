@@ -1574,3 +1574,20 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 
 /* No ENGAGE: every input is always listening; clicking its strip plays it */
 .wr-grid .wr-in-strip[data-in-idx] { cursor: pointer; }
+
+/* Less container, more meter: strips lose their card borders; the selected one is a soft wash */
+.wr-rack .wr-grid .wr-strip,
+body .wr-rack .wr-grid .wr-strip {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 2px 3px !important;
+  border-radius: 4px;
+}
+.wr-rack .wr-grid .wr-strip.selected,
+body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12) !important; }
+.wr-grid col, .wr-grid .wr-grid-corner, .wr-grid .wr-grid-in { width: 270px; }
+.wr-grid .wr-in-strip { grid-template-columns: minmax(0, 1fr) 118px; }
+.wr-grid .wr-in-strip .wr-art-meter .wr-theme-meter-svg { height: 68px; }
+.wr-grid-out .wr-art-meter .wr-theme-meter-svg,
+.wr-grid .wr-grid-out .wr-art-meter .wr-theme-meter-svg { height: 78px; width: 100%; }
