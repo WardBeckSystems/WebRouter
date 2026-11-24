@@ -1,13 +1,14 @@
 /*! Copyright (c) 2026 Ward-Beck Systems (Ward-Beck.ca). All rights reserved. */
 /**
  * Hardware outputs: every sound card output on the host (PipeWire sinks, from the TAP's
- * GET /api/hw), and what each one listens to. Rows are the TAP buses and the hardware inputs,
+ * GET /api/hw), and what each one listens to. Rows are the TAP's outputs to hardware (HW 1
+ * Speakers, HW 2 Cue/HP: the router's HW columns) and the hardware inputs,
  * columns are the hardware outputs; each lit crosspoint is a real PipeWire loopback that the
  * TAP makes or breaks (POST /api/hw). Same grid look as the main matrix.
  */
 
 interface HwOutput { name: string; label: string; card?: string; card_name?: string; state: string; virtual: boolean; default: boolean }
-interface HwSource { name: string; label: string; card?: string; card_name?: string; detail?: string; kind: 'bus' | 'input' }
+interface HwSource { name: string; label: string; tag?: string; card?: string; card_name?: string; detail?: string; kind: 'out' | 'bus' | 'input' }
 interface HwLink { module: string; source: string; sink: string; tap: boolean }
 interface HwStatus { outputs: HwOutput[]; sources: HwSource[]; links: HwLink[] }
 
@@ -93,8 +94,8 @@ export class HwOutputs {
     const rows = st.sources.map((s) => `
       <tr class="wr-grid-row">
         <th class="wr-grid-in wr-hw-src" scope="row" title="${esc(s.label)}${s.detail ? '\n' + esc(s.detail) : ''}\n${esc(s.name)}">
-          <span class="wr-strip-tag wr-pill-${s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'bus' ? 'BUS' : s.card ? `card ${esc(s.card)}` : 'IN'}</span>
-          <span class="wr-strip-name">${esc(s.kind === 'bus' ? s.label : cardName(s, st.sources))}</span>
+          <span class="wr-strip-tag wr-pill-${s.kind === 'out' ? 'hw' : s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'out' ? esc(s.tag || 'HW') : s.kind === 'bus' ? 'BUS' : s.card ? `card ${esc(s.card)}` : 'IN'}</span>
+          <span class="wr-strip-name">${esc(s.kind === 'input' ? cardName(s, st.sources) : s.label)}</span>
         </th>
         ${st.outputs.map((o) => {
           const l = linked(s.name, o.name);

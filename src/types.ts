@@ -63,7 +63,10 @@ export interface WebRouterAudio {
   ctx?: { state: string; resume(): Promise<void> } | null;
   setMonitor(enabled: boolean, volume?: number | null): void;
   setMonitorVolume(volume: number): void;
-  connectSoundCard(): unknown;
+  /** Cue / HP output on or off (XTM: plays into the TAP's HW 2 bus). */
+  setCue?(enabled: boolean): unknown;
+  /** Sound card input; deviceId from enumerateDevices (null = the default input). */
+  connectSoundCard(deviceId?: string | null): unknown;
   connectSystemAudio(surface: 'browser'): unknown;
   startPod33Generator(config: Pod33Config): void;
   stopPod33Generator(): void;

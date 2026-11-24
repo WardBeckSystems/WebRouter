@@ -95,6 +95,7 @@ const IN_POD33 = 2; // POD-33 AES1; AES2-4 are the next three rows
 const POD33_OUTS = 4;
 const IN_BITBUDDY = IN_POD33 + POD33_OUTS;
 const IN_TAB = 1;
+const IN_SOUNDCARD = 0;
 const isPod33Row = (i: number) => i >= IN_POD33 && i < IN_POD33 + POD33_OUTS;
 
 const FLOW_MASTER = 'wbs-flow-master-stereo';
@@ -203,6 +204,10 @@ export class WebRouter {
   private tabPeak = -120;
   private listeners = new Set<(router: WebRouter) => void>();
   private wireObserver: ResizeObserver | null = null;
+  private cueOn = false;
+  /** CH 1: the sound card input it plays ('' = the default input), remembered per browser. */
+  scDevice = '';
+  private scInputs: { id: string; label: string }[] = [];
   private meterArt?: () => MeterArt | null;
   /** The host's meter, once it exists: every strip shows it in miniature. */
   private art: MeterArt | null = null;
@@ -221,6 +226,7 @@ export class WebRouter {
     this.onPlayFlow = opts.onPlayFlow;
     this.meterArt = opts.meterArt;
     try { this.rxChoice = JSON.parse(localStorage.getItem('wr.rxChoice') || '{}') || {}; } catch { /* private window */ }
+    try { this.scDevice = localStorage.getItem('wr.scDevice') || ''; } catch { /* private window */ }
     this.setMeterInputs(this.meterInputs);
     this.exclusive(PRESETS.broadcast.select); // one input per output from the start
   }
@@ -244,6 +250,11 @@ export class WebRouter {
     this.built = true;
     this.watchDaemon();
     this.renderRx();
+    void this.loadSoundCards();
+    if (!this.scWatch && navigator.mediaDevices?.addEventListener) {
+      this.scWatch = true;
+      navigator.mediaDevices.addEventListener('devicechange', () => void this.loadSoundCards());
+    }
     // Wires follow the layout: fonts loading, the tab being shown, the window resizing.
     this.wireObserver?.disconnect();
     this.wireObserver = new ResizeObserver(() => this.queueWires());
@@ -366,6 +377,7 @@ export class WebRouter {
             <button type="button" class="wr-btn-engage" data-in-idx="${idx}">ENGAGE</button>
           </div>
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
+          ${idx === IN_SOUNDCARD ? `<select class="wr-rx-pick" data-sc-pick aria-label="${c.name} device"><option value="">Default input</option></select>` : ''}
           ${isRxRow(idx) ? `<select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} stream"><option value="">Choose a stream…</option></select>
           <div class="wr-strip-info wr-rx-info" id="wrRxInfo${idx}"></div>` : ''}
           ${this.meterPair('wrIn', idx)}
@@ -419,6 +431,7 @@ export class WebRouter {
     root.addEventListener('change', (e) => {
       const t = e.target as HTMLSelectElement;
       if (t.dataset?.rxPick !== undefined) this.setReceiver(+t.dataset.rxPick, t.value);
+      if (t.dataset?.scPick !== undefined) this.setSoundCard(t.value);
     });
     root.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest('button');
@@ -475,10 +488,13 @@ export class WebRouter {
     if (!this.audio) return;
     const a = this.activeInput;
     const on =
-      this.matrix[a][OUT_SPEAKERS] || this.matrix[a][OUT_CUE] ||
+      this.matrix[a][OUT_SPEAKERS] ||
       (this.pod33Engaged && INPUTS.some((_, r) => isPod33Row(r) && this.matrix[r][OUT_SPEAKERS])) ||
       (this.bitBuddyEngaged && this.matrix[IN_BITBUDDY][OUT_SPEAKERS]);
     this.audio.setMonitor(on && !this.outMutes[OUT_SPEAKERS], this.monitorGain());
+    // Cue / HP is its own output (the TAP's HW 2), not a second way onto the speakers
+    const cue = !this.externalSource && this.matrix[a][OUT_CUE] && !this.outMutes[OUT_CUE];
+    if (cue !== this.cueOn) { this.cueOn = cue; this.audio.setCue?.(cue); }
   }
 
   private hintFlow(): void {
@@ -500,6 +516,8 @@ export class WebRouter {
     // Exclusive 1:1 routing: an output takes one input. Clicking the lit crosspoint
     // clears the output; any other crosspoint replaces its source.
     this.route(row, col, !this.matrix[row][col]);
+    // Cue / HP goes to its own bus (HW 2), not the room: making its crosspoint is the unmute
+    if (col === OUT_CUE && this.matrix[row][col]) this.outMutes[OUT_CUE] = false;
     if (col === OUT_SPEAKERS || col === OUT_CUE) this.syncMonitor(); // the crosspoint is the mute
     this.refresh();
   }
@@ -530,13 +548,41 @@ export class WebRouter {
     else if (idx === IN_BITBUDDY) this.setBitBuddy(true, false);
     else if (isRxRow(idx)) this.startReceiver(idx);
     else if (audio) {
-      if (idx === 0) audio.connectSoundCard();
+      if (idx === IN_SOUNDCARD) audio.connectSoundCard(this.scDevice || null);
       else if (idx === 1) audio.connectSystemAudio('browser');
       else if (idx === 4) audio.startTestGenerator('pink');
     }
     this.syncMonitor();
     this.hintFlow();
     this.refresh();
+  }
+
+  private scWatch = false;
+
+  /** CH 1's list: every sound card input the browser offers (names appear once audio is allowed). */
+  private async loadSoundCards(): Promise<void> {
+    try {
+      const devs = await navigator.mediaDevices.enumerateDevices();
+      this.scInputs = devs
+        .filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications')
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `Input ${i + 1}` }));
+    } catch { this.scInputs = []; }
+    const sel = this.container.querySelector<HTMLSelectElement>('[data-sc-pick]');
+    if (!sel || document.activeElement === sel) return;
+    const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+    const known = this.scInputs.some((d) => d.id === this.scDevice);
+    sel.innerHTML = '<option value="">Default input</option>'
+      + (this.scDevice && !known ? `<option value="${esc(this.scDevice)}">(not connected)</option>` : '')
+      + this.scInputs.map((d) => `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join('');
+    sel.value = this.scDevice;
+  }
+
+  /** Choose CH 1's sound card input; it plays straight away. */
+  setSoundCard(deviceId: string): void {
+    this.scDevice = deviceId;
+    try { localStorage.setItem('wr.scDevice', deviceId); } catch { /* ignore */ }
+    this.selectInput(IN_SOUNDCARD);
+    void this.loadSoundCards(); // names appear once the browser has been allowed the input
   }
 
   /** Pick the stream a receiver row listens to; a live row switches over straight away. */
