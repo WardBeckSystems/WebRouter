@@ -1596,3 +1596,21 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-art-meter { position: relative; }
 .wr-art-tag { position: absolute; left: 0; right: 0; bottom: 9%; display: flex; justify-content: center; pointer-events: none; }
 .wr-art-tag .wr-strip-tag { pointer-events: auto; font-size: 0.6rem; padding: 0 5px; line-height: 1.35; margin: 0; }
+
+/* Tight: narrow columns sized to the meters, short rows, no gutters */
+.wr-rack .wr-grid.wr-matrix-table:not(.wr-hw-grid) { width: auto; min-width: 0; }
+.wr-rack .wr-grid:not(.wr-hw-grid) col,
+.wr-rack .wr-grid:not(.wr-hw-grid) .wr-grid-corner,
+.wr-rack .wr-grid:not(.wr-hw-grid) .wr-grid-in { width: 196px; }
+.wr-rack .wr-grid:not(.wr-hw-grid) .wr-grid-out-head { width: 92px; padding: 0 1px !important; }
+.wr-rack .wr-grid:not(.wr-hw-grid) th, .wr-rack .wr-grid:not(.wr-hw-grid) td { padding: 0 1px !important; }
+.wr-rack .wr-grid .wr-in-strip { grid-template-columns: minmax(0, 1fr) 84px; column-gap: 2px; padding: 1px 2px !important; }
+.wr-rack .wr-grid .wr-in-strip .wr-art-meter .wr-theme-meter-svg { height: 50px; }
+.wr-rack .wr-grid .wr-grid-out .wr-art-meter .wr-theme-meter-svg { height: 56px; }
+.wr-rack .wr-grid .wr-strip-top { gap: 2px; }
+.wr-rack .wr-grid .wr-out-strip .wr-strip-top { min-height: 0; margin: 0; }
+.wr-rack .wr-grid .wr-strip-name { font-size: 0.64rem; line-height: 1.1; }
+.wr-rack .wr-grid .wr-rx-pick { font-size: 0.6rem; margin-top: 1px; }
+.wr-rack .wr-grid .wr-level { margin: 1px 0 0; height: 10px; }
+.wr-rack .wr-art-tag .wr-strip-tag { font-size: 0.54rem; padding: 0 4px; }
+.wr-rack { padding: 4px; }
