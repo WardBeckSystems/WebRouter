@@ -1528,3 +1528,14 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 .wr-rack button.wr-strip-name.wr-btn-open-flow { background: none; padding: 0; text-align: left; font-weight: 700; color: inherit; }
 .wr-rack .wr-btn-open-flow:hover { text-decoration: underline; }
 .wr-rack .wr-btn-hz { white-space: nowrap; }
+
+/* Hardware outputs grid (hw-outputs.ts): TAP buses + hardware inputs down, sound card outputs across */
+.wr-hw-card { margin-top: 12px; }
+.wr-hw-card:empty { display: none; }
+.wr-hw-corner { font: 800 0.62rem/1 ui-monospace, monospace; letter-spacing: 0.12em; opacity: 0.7; vertical-align: middle; }
+.wr-hw-src { text-align: left; white-space: nowrap; }
+.wr-hw-src .wr-strip-tag { margin-right: 6px; }
+.wr-hw-out .wr-strip-top { align-items: center; }
+.wr-hw-led { width: 7px; height: 7px; border-radius: 50%; flex: none; background: currentColor; opacity: 0.25; margin-left: auto; }
+.wr-hw-led.on { background: #22c55e; opacity: 1; box-shadow: 0 0 6px #22c55e; }
+.wr-hw-off { padding: 10px 12px; font: 600 0.72rem ui-monospace, monospace; opacity: 0.7; }

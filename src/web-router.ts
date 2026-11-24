@@ -26,13 +26,18 @@ import {
   type WebRouterOptions,
 } from './types';
 import { PIVOT_L, PIVOT_R, PIVOT_Y, clampDb, renderMeterPair, vuDbToAngle } from './vu-meter';
+import { HwOutputs } from './hw-outputs';
 
 export const INPUTS: RouterChannel[] = [
   { tag: 'CH 1', name: 'Soundcard In', sub: 'Mic / Line In', pill: 'mic' },
   { tag: 'CH 2', name: 'Browser Tab', sub: 'Shared tab audio (getDisplayMedia)', pill: 'sys' },
-  { tag: 'CH 3', name: 'POD-33 Tone', sub: 'DARS 100/400/1k', pill: 'pod' },
-  { tag: 'CH 4', name: 'Bit Buddy', sub: 'ABS-1 Bit Spitter', pill: 'abb' },
-  { tag: 'CH 5', name: 'Pink / Sweep', sub: 'Noise Reference', pill: 'noise' },
+  // POD-33: one unit, its four rear AES outputs (one ENGAGE powers all four)
+  { tag: 'CH 3', name: 'POD-33 AES1', sub: 'POD-33 DARS rear AES1 out (100/400/1k)', pill: 'pod' },
+  { tag: 'CH 4', name: 'POD-33 AES2', sub: 'POD-33 DARS rear AES2 out (100/400/1k)', pill: 'pod' },
+  { tag: 'CH 5', name: 'POD-33 AES3', sub: 'POD-33 DARS rear AES3 out (100/400/1k)', pill: 'pod' },
+  { tag: 'CH 6', name: 'POD-33 AES4', sub: 'POD-33 DARS rear AES4 out (100/400/1k)', pill: 'pod' },
+  { tag: 'CH 7', name: 'Bit Buddy', sub: 'ABS-1 Bit Spitter', pill: 'abb' },
+  { tag: 'CH 8', name: 'Pink / Sweep', sub: 'Noise Reference', pill: 'noise' },
 ];
 
 /**
@@ -72,15 +77,17 @@ const OUT_CUE = 5;
 const OUT_POD33 = 7;
 const OUT_POD33_LOW = 8; // 400 / 100 Hz, switchable
 const OUT_BITS = 9;
-const IN_POD33 = 2;
-const IN_BITBUDDY = 3;
+const IN_POD33 = 2; // POD-33 AES1; AES2-4 are the next three rows
+const POD33_OUTS = 4;
+const IN_BITBUDDY = IN_POD33 + POD33_OUTS;
 const IN_TAB = 1;
+const isPod33Row = (i: number) => i >= IN_POD33 && i < IN_POD33 + POD33_OUTS;
 
 const FLOW_MASTER = 'wbs-flow-master-stereo';
 const FLOW_TONE = 'wbs-flow-ref-tone';
 const FLOW_BITS = 'wbs-flow-bit-spitter';
 
-const PRESETS: Record<string, { matrix: boolean[][]; select?: number }> = {
+const PRESETS_5ROW: Record<string, { matrix: boolean[][]; select?: number }> = {
   broadcast: {
     select: 1,
     matrix: [
@@ -116,12 +123,24 @@ const PRESETS: Record<string, { matrix: boolean[][]; select?: number }> = {
   },
 };
 
+/** Presets are written with one POD-33 row; AES1 takes its routes, AES2-4 start unrouted. */
+const expandPod33 = (m: boolean[][]): boolean[][] => [
+  ...m.slice(0, IN_POD33 + 1),
+  ...Array.from({ length: POD33_OUTS - 1 }, () => new Array(m[0].length).fill(false)),
+  ...m.slice(IN_POD33 + 1),
+];
+const toRow = (r: number | undefined) => (r === undefined || r <= IN_POD33 ? r : r + POD33_OUTS - 1);
+const PRESETS: Record<string, { matrix: boolean[][]; select?: number }> = Object.fromEntries(
+  Object.entries(PRESETS_5ROW).map(([k, p]) => [k, { matrix: expandPod33(p.matrix), select: toRow(p.select) }]),
+);
+
 const cloneMatrix = (m: boolean[][]) => m.map((row) => row.slice());
 
 export class WebRouter {
   readonly container: HTMLElement;
   private audio: WebRouterAudio | null;
   private daemonUrl: string;
+  private hw: HwOutputs | null = null;
   private onFlowHint?: (flowId: string) => void;
   private onOpenFlow?: (flowId: string) => void;
   private onMeterInput?: (meter: number, input: number) => void;
@@ -187,6 +206,8 @@ export class WebRouter {
     this.refresh();
     this.built = true;
     this.watchDaemon();
+    this.hw?.destroy();
+    this.hw = new HwOutputs(q('#wrHw') as HTMLElement, this.daemonUrl).mount();
     return this;
   }
 
@@ -244,6 +265,9 @@ export class WebRouter {
             <tbody>${INPUTS.map((c, r) => this.renderInputRow(c, r)).join('')}</tbody>
           </table>
         </div>
+
+        <!-- Every sound card output on the host and what it listens to (hw-outputs.ts, TAP /api/hw) -->
+        <div class="wr-grid-card wr-hw-card" id="wrHw"></div>
 
       </div>`;
   }
@@ -357,7 +381,7 @@ export class WebRouter {
     const a = this.activeInput;
     const on =
       this.matrix[a][OUT_SPEAKERS] || this.matrix[a][OUT_CUE] ||
-      (this.pod33Engaged && this.matrix[IN_POD33][OUT_SPEAKERS]) ||
+      (this.pod33Engaged && INPUTS.some((_, r) => isPod33Row(r) && this.matrix[r][OUT_SPEAKERS])) ||
       (this.bitBuddyEngaged && this.matrix[IN_BITBUDDY][OUT_SPEAKERS]);
     this.audio.setMonitor(on && !this.outMutes[OUT_SPEAKERS], this.monitorGain());
   }
@@ -387,7 +411,7 @@ export class WebRouter {
     this.activeInput = idx;
     const audio = this.audio;
     this.resumeAudio();
-    if (idx === IN_POD33) this.setPod33(true, false);
+    if (isPod33Row(idx)) this.setPod33(true, false);
     else if (idx === IN_BITBUDDY) this.setBitBuddy(true, false);
     else if (audio) {
       if (idx === 0) audio.connectSoundCard();
@@ -519,13 +543,13 @@ export class WebRouter {
   }
 
   private isInputLive(i: number): boolean {
-    return (i === this.activeInput && !this.externalSource) || (i === IN_POD33 && this.pod33Engaged) || (i === IN_BITBUDDY && this.bitBuddyEngaged);
+    return (i === this.activeInput && !this.externalSource) || (isPod33Row(i) && this.pod33Engaged) || (i === IN_BITBUDDY && this.bitBuddyEngaged);
   }
 
   /** Sync every button/LED/class to current state. Cheap; called after each change. */
   refresh(): void {
     const root = this.container;
-    root.querySelectorAll<HTMLElement>('.wr-matrix-btn').forEach((b) => {
+    root.querySelectorAll<HTMLElement>('.wr-matrix-btn[data-row]').forEach((b) => {
       b.classList.toggle('connected', this.matrix[+b.dataset.row!][+b.dataset.col!]);
     });
     INPUTS.forEach((_, i) => {
@@ -627,13 +651,19 @@ export class WebRouter {
     if (this.externalSource !== this.wasExternal) { this.wasExternal = this.externalSource; this.refresh(); }
     this.renderTabStrip(levels);
 
-    INPUTS.forEach((_, i) => {
-      let db: [number, number] = [-60, -60];
-      if (i === IN_POD33 && this.pod33Engaged) db = this.pod33Db();
-      else if (i === IN_BITBUDDY && this.bitBuddyEngaged) db = this.bitBuddyDb();
-      else if (i === this.activeInput && !this.externalSource && (i !== IN_TAB || this.tabInfo)) db = [vuL, vuR];
-      this.setMeter(n.inL[i], n.inR[i], db[0], db[1]);
+    // Each input's own level: generators from their settings, the playing source from the engine.
+    const rowDb = INPUTS.map((_, i): [number, number] => {
+      if (isPod33Row(i) && this.pod33Engaged) return this.pod33Db();
+      if (i === IN_BITBUDDY && this.bitBuddyEngaged) return this.bitBuddyDb();
+      if (i === this.activeInput && !this.externalSource && (i !== IN_TAB || this.tabInfo)) return [vuL, vuR];
+      return [-60, -60];
     });
+    rowDb.forEach((db, i) => this.setMeter(n.inL[i], n.inR[i], db[0], db[1]));
+    // An output hears the power sum of the inputs routed to it, so each meter shows its own inputs.
+    const sumDb = (dbs: number[]) => {
+      const p = dbs.reduce((a, d) => a + (d > -60 ? Math.pow(10, d / 10) : 0), 0);
+      return p > 0 ? 10 * Math.log10(p) : -60;
+    };
 
     OUTPUTS.forEach((_, o) => {
       const dim = (this.outDims[o] ? -20 : 0)
@@ -646,8 +676,11 @@ export class WebRouter {
           const bits = this.bitBuddyDb();
           db = [Math.floor(Date.now() / 520) % 2 === 1 ? -60 : bits[0], bits[1]];
         }
-        else if (INPUTS.some((_, r) => this.isInputLive(r) && this.matrix[r][o])) db = [vuL, vuR];
-        else if (this.externalSource && o < METERS) db = [vuL, vuR]; // an MXL flow drives the meters directly
+        else {
+          const routed = INPUTS.map((_, r) => r).filter((r) => this.matrix[r][o] && this.isInputLive(r));
+          if (routed.length) db = [sumDb(routed.map((r) => rowDb[r][0])), sumDb(routed.map((r) => rowDb[r][1]))];
+          else if (this.externalSource && o < METERS) db = [vuL, vuR]; // an MXL flow drives the meters directly
+        }
         db = [clampDb(db[0] + dim), clampDb(db[1] + dim)];
       }
       this.setMeter(n.outL[o], n.outR[o], db[0], db[1]);

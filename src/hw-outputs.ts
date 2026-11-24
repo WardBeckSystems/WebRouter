@@ -1,0 +1,106 @@
+/*! Copyright (c) 2026 Ward-Beck Systems (Ward-Beck.ca). All rights reserved. */
+/**
+ * Hardware outputs: every sound card output on the host (PipeWire sinks, from the TAP's
+ * GET /api/hw), and what each one listens to. Rows are the TAP buses and the hardware inputs,
+ * columns are the hardware outputs; each lit crosspoint is a real PipeWire loopback that the
+ * TAP makes or breaks (POST /api/hw). Same grid look as the main matrix.
+ */
+
+interface HwOutput { name: string; label: string; state: string; virtual: boolean; default: boolean }
+interface HwSource { name: string; label: string; kind: 'bus' | 'input' }
+interface HwLink { module: string; source: string; sink: string; tap: boolean }
+interface HwStatus { outputs: HwOutput[]; sources: HwSource[]; links: HwLink[] }
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+
+/** "GP104 High Definition Audio Controller Digital Stereo (HDMI 2)" → "HDMI 2" */
+function shortOut(o: HwOutput): string {
+  const paren = o.label.match(/\(([^)]+)\)\s*$/);
+  if (paren) return paren[1];
+  return o.label.replace(/\b(High Definition Audio Controller|Analog Stereo|Digital Stereo)\b/g, '').replace(/\s+/g, ' ').trim() || o.name;
+}
+
+export class HwOutputs {
+  private status: HwStatus | null = null;
+  private key = '';
+  private timer: number | undefined;
+  private busy = false;
+
+  constructor(private el: HTMLElement, private daemonUrl: string) {}
+
+  mount(): this {
+    this.el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-hw-src]');
+      if (b) this.toggle(b.dataset.hwSrc!, b.dataset.hwSink!, !b.classList.contains('connected'));
+    });
+    // Poll only while the router is on screen (the grid itself is hidden until it has content)
+    const poll = () => { if ((this.el.parentElement as HTMLElement | null)?.offsetParent !== null) this.load(); };
+    poll();
+    this.timer = window.setInterval(poll, 2500);
+    return this;
+  }
+
+  destroy(): void { clearInterval(this.timer); }
+
+  private load(): void {
+    if (this.busy) return;
+    fetch(`${this.daemonUrl}/api/hw`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((st: HwStatus) => this.show(st))
+      .catch(() => this.show(null));
+  }
+
+  private toggle(source: string, sink: string, on: boolean): void {
+    this.busy = true;
+    fetch(`${this.daemonUrl}/api/hw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, sink, on }),
+    })
+      .then((r) => r.json())
+      .then((st: HwStatus) => { if (st && st.outputs) this.show(st); })
+      .catch(() => {})
+      .finally(() => { this.busy = false; });
+  }
+
+  private show(st: HwStatus | null): void {
+    const key = JSON.stringify(st);
+    if (key === this.key) return;
+    this.key = key;
+    this.status = st;
+    if (!st) {
+      this.el.innerHTML = `<div class="wr-hw-off">Hardware outputs appear when the TAP is running (localhost:8467).</div>`;
+      return;
+    }
+    const linked = (src: string, sink: string) => st.links.find((l) => l.source === src && l.sink === sink);
+    const head = st.outputs.map((o, i) => `
+      <th class="wr-grid-out-head wr-hw-out" scope="col" title="${esc(o.label)}\n${esc(o.name)}${o.default ? '\nDefault output' : ''}">
+        <div class="wr-strip wr-out-strip${o.state === 'RUNNING' ? ' selected' : ''}">
+          <div class="wr-strip-top">
+            <span class="wr-strip-tag wr-pill-out">HW ${i + 1}</span>
+            <span class="wr-strip-name">${esc(shortOut(o))}</span>
+            <span class="wr-hw-led${o.state === 'RUNNING' ? ' on' : ''}" aria-label="${o.state}"></span>
+          </div>
+        </div>
+      </th>`).join('');
+    const rows = st.sources.map((s) => `
+      <tr class="wr-grid-row">
+        <th class="wr-grid-in wr-hw-src" scope="row" title="${esc(s.label)}\n${esc(s.name)}">
+          <span class="wr-strip-tag wr-pill-${s.kind === 'bus' ? 'sys' : 'mic'}">${s.kind === 'bus' ? 'BUS' : 'IN'}</span>
+          <span class="wr-strip-name">${esc(s.label)}</span>
+        </th>
+        ${st.outputs.map((o) => {
+          const l = linked(s.name, o.name);
+          return `<td class="wr-td-crosspoint"><button type="button" class="wr-matrix-btn${l ? ' connected' : ''}"
+            data-hw-src="${esc(s.name)}" data-hw-sink="${esc(o.name)}"
+            title="${esc(s.label)} → ${esc(shortOut(o))}${l?.tap ? ' (TAP speaker leg)' : ''}"
+            aria-label="${esc(s.label)} to ${esc(shortOut(o))}" aria-pressed="${l ? 'true' : 'false'}"><span class="wr-matrix-led"></span></button></td>`;
+        }).join('')}
+      </tr>`).join('');
+    this.el.innerHTML = `
+      <table class="wr-matrix-table wr-grid wr-hw-grid" aria-label="Hardware outputs: sources down, sound card outputs across">
+        <thead><tr><th class="wr-grid-corner wr-hw-corner">HARDWARE</th>${head}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+}
