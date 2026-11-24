@@ -181,6 +181,15 @@ export class WebRouter {
   meterInputs: (number | null)[] = [0, 1, 2, 3];
 
   pod33Config: Pod33Config = { ...DEFAULT_POD33_CONFIG };
+  /**
+   * The POD-33's four rear AES outputs (CH 3-6), each with its own frequency, level and
+   * channel / phase; the reference lock is the unit's, shared. pod33Config is the output
+   * being played (pod33Out).
+   */
+  pod33Outputs: Pick<Pod33Config, 'freq' | 'levelDb' | 'channelMode'>[] = Array.from({ length: POD33_OUTS }, () => ({
+    freq: DEFAULT_POD33_CONFIG.freq, levelDb: DEFAULT_POD33_CONFIG.levelDb, channelMode: DEFAULT_POD33_CONFIG.channelMode,
+  }));
+  pod33Out = 0;
   bitBuddyConfig: BitBuddyConfig = { ...DEFAULT_BITBUDDY_CONFIG };
   pod33Engaged = false;
   /** MXL 3 transmits POD-33 400 Hz or 100 Hz. */
@@ -414,7 +423,6 @@ export class WebRouter {
               : c.pill === 'mxl'
                 ? `<button type="button" class="wr-strip-name wr-btn-open-flow" data-open-flow="${idx}" title="Open the ${c.name} MXL transmitter">${SHORT_OUT[idx]}</button>`
                 : `<span class="wr-strip-name">${SHORT_OUT[idx]}</span>`}
-            ${c.pill === 'hw' ? `<button type="button" class="wr-btn-out-tool wr-btn-dim" data-out-dim="${idx}" title="Dim ${c.name} by 20 dB">-20dB</button>` : ''}
           </div>
           ${this.meterPair('wrOut', idx, tag)}
           ${idx === OUT_SPEAKERS ? `<input type="range" class="wr-level" data-out-level="${idx}" min="0" max="1" step="0.01" value="${this.speakerLevel}" title="Speaker level" aria-label="Speaker level">` : ''}
@@ -564,7 +572,7 @@ export class WebRouter {
     // One input at a time: a generator left running would keep playing under the new input.
     if (!isPod33Row(idx) && this.pod33Engaged) this.setPod33(false, false);
     if (idx !== IN_BITBUDDY && this.bitBuddyEngaged) this.setBitBuddy(false, false);
-    if (isPod33Row(idx)) this.setPod33(true, false);
+    if (isPod33Row(idx)) { this.usePod33Output(idx - IN_POD33); this.setPod33(true, false); }
     else if (idx === IN_BITBUDDY) this.setBitBuddy(true, false);
     else if (isRxRow(idx)) this.startReceiver(idx);
     else if (audio) {
@@ -762,8 +770,28 @@ export class WebRouter {
     if (this.bitBuddyEngaged && this.bitBuddyConfig.ext && !this.daemonOnline) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
   }
 
-  /** Update POD-33 settings (restarts the generator if it is running). */
+  /** Play POD-33 output n (0-3): its own frequency, level and channel, the unit's reference. */
+  private usePod33Output(n: number): void {
+    this.pod33Out = Math.max(0, Math.min(POD33_OUTS - 1, n));
+    Object.assign(this.pod33Config, this.pod33Outputs[this.pod33Out]);
+  }
+
+  /** Update one POD-33 output (0-3); the one playing restarts with it. */
+  setPod33Output(n: number, patch: Partial<Pick<Pod33Config, 'freq' | 'levelDb' | 'channelMode'>>): void {
+    const out = this.pod33Outputs[n];
+    if (!out) return;
+    Object.assign(out, patch);
+    if (n === this.pod33Out) {
+      this.setPod33Config(patch);
+      if (this.pod33Engaged && patch.freq !== undefined) this.post('/api/test_tone', { freq: out.freq, restart: true });
+    } else this.refresh();
+  }
+
+  /** Update POD-33 settings (restarts the generator if it is running). Frequency, level and
+   *  channel apply to the output being played; the reference lock to the whole unit. */
   setPod33Config(patch: Partial<Pod33Config>): void {
+    const { refClock: _ref, ...perOut } = patch;
+    Object.assign(this.pod33Outputs[this.pod33Out], perOut);
     Object.assign(this.pod33Config, patch);
     if (this.pod33Engaged) this.audio?.startPod33Generator(this.pod33Config);
     this.restartSpitterIfExt();
@@ -886,8 +914,10 @@ export class WebRouter {
 
   // ───────────────────────────── metering ─────────────────────────────
 
-  private pod33Db(): [number, number] {
-    const { levelDb: cal, channelMode: m } = this.pod33Config;
+  /** A POD-33 output's level (VU dB L, R) from its own settings (default: the one playing). */
+  private pod33Db(n = this.pod33Out): [number, number] {
+    const { levelDb, channelMode: m, freq } = this.pod33Outputs[n] ?? this.pod33Config;
+    const cal = freq === 0 || levelDb <= -100 ? -60 : levelDb + 18; // dBFS → VU (0 VU = -18 dBFS)
     return [m === 'right' ? -60 : cal, m === 'left' ? -60 : cal];
   }
 
@@ -958,8 +988,7 @@ export class WebRouter {
 
   /** TAP flows behind the inputs: POD-33 AES1-4 (ref tone), Bit Buddy, the two receivers. */
   private static readonly SRC_FLOWS: Record<string, number[]> = {
-    'wbs-flow-ref-tone': [IN_POD33, IN_POD33 + 1, IN_POD33 + 2, IN_POD33 + 3],
-    'wbs-flow-bit-spitter': [IN_BITBUDDY],
+        'wbs-flow-bit-spitter': [IN_BITBUDDY],
     'wbs-network-rx': [8],
     'wbs-moip-rx': [9],
   };
@@ -1054,8 +1083,9 @@ export class WebRouter {
     this.listen();
     // Every input is always listening: its own level, whether it is playing or not.
     const rowDb = INPUTS.map((_, i): [number, number] => {
+      // A POD-33 output is a reference: always on, at its own setting
+      if (isPod33Row(i)) return this.pod33Db(i - IN_POD33);
       if (this.srcDb[i]) return this.srcDb[i];
-      if (isPod33Row(i) && this.pod33Engaged) return this.pod33Db();
       if (i === IN_BITBUDDY && this.bitBuddyEngaged) return this.bitBuddyDb();
       if (i === this.activeInput && !this.externalSource && (i !== IN_TAB || this.tabInfo)) return [vuL, vuR];
       return [-60, -60];
