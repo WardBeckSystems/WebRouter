@@ -102,6 +102,8 @@ export interface WebRouterOptions {
   onFlowHint?: (flowId: string) => void;
   /** Clicking an MXL transmitter column opens that flow (XTM: the Transmitters tab). */
   onOpenFlow?: (flowId: string) => void;
+  /** Open the receivers (CH 9 / CH 10's stream name was clicked). */
+  onOpenReceivers?: () => void;
   /**
    * A crosspoint on a Meter Input column was made: router input `input` now feeds the
    * meter's INPUT button `meter` (1-4). XTM: assigns that button and plays it.

@@ -67,10 +67,10 @@ export const OUTPUTS: RouterChannel[] = [
   { tag: 'HW 1', name: 'Monitor 1 / Speakers', sub: 'Sound card out (ALSA)', pill: 'hw' },
   { tag: 'HW 2', name: 'Studio Cue / HP', sub: 'Sound card out (control room listen)', pill: 'hw' },
   // The four Transmitters
-  { tag: 'MXL 1', name: 'Repeater', sub: 'MXL flow wbs-flow-master-stereo (repeats the routed mix) → /dev/shm/mxl', pill: 'mxl' },
-  { tag: 'MXL 2', name: 'POD-33 1 kHz', sub: 'MXL flow POD-33-1kHz-Reference → /dev/shm/mxl', pill: 'mxl' },
-  { tag: 'MXL 3', name: 'POD-33 400 / 100 Hz', sub: 'MXL flow POD-33-400Hz-Alignment / POD-33-100Hz-LowEnd (click the name to switch) → /dev/shm/mxl', pill: 'mxl' },
-  { tag: 'MXL 4', name: 'Bit Spitter', sub: 'MXL flow wbs-flow-bit-spitter → /dev/shm/mxl', pill: 'mxl' },
+  { tag: 'MXL67-1', name: 'Repeater', sub: 'MXL flow wbs-flow-master-stereo (repeats the routed mix) → /dev/shm/mxl', pill: 'mxl' },
+  { tag: 'MXL67-2', name: 'POD-33 1 kHz', sub: 'MXL flow POD-33-1kHz-Reference → /dev/shm/mxl', pill: 'mxl' },
+  { tag: 'MXL67-3', name: 'POD-33 400 / 100 Hz', sub: 'MXL flow POD-33-400Hz-Alignment / POD-33-100Hz-LowEnd (click the name to switch) → /dev/shm/mxl', pill: 'mxl' },
+  { tag: 'MXL67-4', name: 'Bit Spitter', sub: 'MXL flow wbs-flow-bit-spitter → /dev/shm/mxl', pill: 'mxl' },
 ];
 
 const SHORT_OUT = ['Input 1', 'Input 2', 'Input 3', 'Input 4', 'Speakers', 'Cue/HP', 'Repeater', '1 kHz', '400 Hz', 'Bit Spitter'];
@@ -161,6 +161,7 @@ export class WebRouter {
   private hw: HwOutputs | null = null;
   private onFlowHint?: (flowId: string) => void;
   private onOpenFlow?: (flowId: string) => void;
+  private onOpenReceivers?: () => void;
   private onMeterInput?: (meter: number, input: number) => void;
   private onPlayFlow?: (flowId: string) => void;
   /** Streams the TAP has heard announced, offered on CH 9 / CH 10. */
@@ -248,6 +249,7 @@ export class WebRouter {
     this.daemonUrl = (opts.daemonUrl ?? 'http://localhost:8467').replace(/\/$/, '');
     this.onFlowHint = opts.onFlowHint;
     this.onOpenFlow = opts.onOpenFlow;
+    this.onOpenReceivers = opts.onOpenReceivers;
     this.onMeterInput = opts.onMeterInput;
     this.onPlayFlow = opts.onPlayFlow;
     this.meterArt = opts.meterArt;
@@ -537,7 +539,7 @@ export class WebRouter {
           </div>
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
           ${idx === IN_SOUNDCARD ? `<select class="wr-rx-pick" data-sc-pick aria-label="${c.name} device"><option value="">Default input</option></select>` : ''}
-          ${isRxRow(idx) ? `<div class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></div>` : ''}
+          ${isRxRow(idx) ? `<div class="wr-strip-info wr-rx-info wr-rx-open" data-rx-info="${idx}" data-rx-open="1" role="link" title="Choose the stream in the Receivers tab"></div>` : ''}
           ${this.meterPair('wrIn', idx, `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`)}
         </div>
       </th>${cells}</tr>`;
@@ -594,6 +596,7 @@ export class WebRouter {
     });
     root.addEventListener('click', (e) => {
       const el = e.target as HTMLElement;
+      if (el.closest('[data-rx-open]')) { this.onOpenReceivers?.(); return; }
       // Clicking an input strip (not its picker) plays that input
       const strip = el.closest<HTMLElement>('.wr-in-strip[data-in-idx]');
       if (strip && !el.closest('select') && root.contains(strip)) { this.selectInput(+strip.dataset.inIdx!); return; }
