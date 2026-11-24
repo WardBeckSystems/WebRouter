@@ -188,6 +188,7 @@ export class WebRouter {
     this.onOpenFlow = opts.onOpenFlow;
     this.onMeterInput = opts.onMeterInput;
     this.setMeterInputs(this.meterInputs);
+    this.exclusive(PRESETS.broadcast.select); // one input per output from the start
   }
 
   /** Render the router into its container and wire events. */
@@ -402,9 +403,26 @@ export class WebRouter {
       this.onMeterInput?.(col + 1, row);
       return;
     }
-    this.matrix[row][col] = !this.matrix[row][col];
+    // Exclusive 1:1 routing: an output takes one input. Clicking the lit crosspoint
+    // clears the output; any other crosspoint replaces its source.
+    this.route(row, col, !this.matrix[row][col]);
     if (col === OUT_SPEAKERS || col === OUT_CUE) this.syncMonitor(); // the crosspoint is the mute
     this.refresh();
+  }
+
+  /** Exclusive 1:1: putting `row` on output `col` takes every other input off it. */
+  private route(row: number, col: number, on: boolean): void {
+    if (on) this.matrix.forEach((r, i) => { r[col] = i === row; });
+    else this.matrix[row][col] = false;
+  }
+
+  /** Presets may list several sources per output: keep one (the selected input, else the first). */
+  private exclusive(prefer?: number): void {
+    const cols = this.matrix[0]?.length ?? 0;
+    for (let c = 0; c < cols; c++) {
+      const rows = this.matrix.map((r, i) => (r[c] ? i : -1)).filter((i) => i >= 0);
+      if (rows.length > 1) this.route(prefer !== undefined && rows.includes(prefer) ? prefer : rows[0], c, true);
+    }
   }
 
   selectInput(idx: number): void {
@@ -426,7 +444,7 @@ export class WebRouter {
   /** Force a source onto Monitor 1 (speakers) and unmute it. */
   routeToSpeakers(idx: number = this.activeInput): void {
     if (idx !== this.activeInput) this.selectInput(idx);
-    this.matrix[idx][OUT_SPEAKERS] = true;
+    this.route(idx, OUT_SPEAKERS, true);
     this.outMutes[OUT_SPEAKERS] = false;
     this.resumeAudio();
     this.audio?.setMonitor(true, this.monitorGain());
@@ -446,6 +464,7 @@ export class WebRouter {
     if (!p) return;
     this.matrix = cloneMatrix(p.matrix);
     for (let c = 0; c < METERS; c++) this.matrix.forEach((r, i) => { r[c] = this.meterInputs[c] === i; });
+    this.exclusive(p.select);
     if (p.select !== undefined) this.selectInput(p.select);
     else this.refresh();
   }
@@ -462,7 +481,7 @@ export class WebRouter {
 
   setPod33(on: boolean, sync = true): void {
     this.pod33Engaged = on;
-    this.matrix[IN_POD33][OUT_SPEAKERS] = on;
+    this.route(IN_POD33, OUT_SPEAKERS, on);
     if (on) this.audio?.startPod33Generator(this.pod33Config);
     else this.audio?.stopPod33Generator();
     this.restartSpitterIfExt();
@@ -479,7 +498,7 @@ export class WebRouter {
   /** Local state for the shared Bit Buddy; sound comes from the browser only when the daemon is away. */
   private applyBitBuddy(on: boolean, sync = true): void {
     this.bitBuddyEngaged = on;
-    this.matrix[IN_BITBUDDY][OUT_SPEAKERS] = on;
+    this.route(IN_BITBUDDY, OUT_SPEAKERS, on);
     if (on && !this.daemonOnline) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
     else this.audio?.stopBitBuddyGenerator();
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
