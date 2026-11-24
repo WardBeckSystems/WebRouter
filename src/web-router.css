@@ -1530,7 +1530,7 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 .wr-rack .wr-btn-hz { white-space: nowrap; }
 
 /* Hardware outputs grid (hw-outputs.ts): TAP buses + hardware inputs down, sound card outputs across */
-.wr-hw-card { margin-top: 12px; }
+.wr-hw-card { margin-top: 0; }
 .wr-hw-card:empty { display: none; }
 .wr-hw-corner { font: 800 0.62rem/1 ui-monospace, monospace; letter-spacing: 0.12em; opacity: 0.7; vertical-align: middle; }
 .wr-hw-src { text-align: left; white-space: nowrap; }
@@ -1614,3 +1614,13 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-rack .wr-grid .wr-level { margin: 1px 0 0; height: 10px; }
 .wr-rack .wr-art-tag .wr-strip-tag { font-size: 0.54rem; padding: 0 4px; }
 .wr-rack { padding: 4px; }
+
+/* Receivers tab: one row per receiver, the flow it listens to and what the TAP says */
+.wr-rx-card { padding: 4px 8px; }
+.wr-rx-table { width: 100%; border-collapse: collapse; font: 600 0.75rem ui-monospace, monospace; }
+.wr-rx-table thead th { text-align: left; font-size: 0.62rem; letter-spacing: 0.12em; opacity: 0.7; padding: 6px 8px; }
+.wr-rx-table td, .wr-rx-table tbody th { padding: 6px 8px; border-top: 1px solid rgba(127, 127, 127, 0.25); text-align: left; white-space: nowrap; }
+.wr-rx-table .wr-rx-pick { width: auto; min-width: 240px; margin: 0; font-size: 0.75rem; padding: 2px 4px; }
+.wr-rx-table .wr-rx-info { white-space: normal; }
+.wr-rx-addr { opacity: 0.75; }
+.wr-hw-card { margin-top: 0; }

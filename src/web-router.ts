@@ -166,7 +166,7 @@ export class WebRouter {
   rxStreams: RxStream[] = [];
   /** What each receiver row is set to (stream id) and the TAP's word on it. */
   rxChoice: Record<number, string> = {};
-  rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string }> = {};
+  rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string }> = {};
   private rxKey = '';
 
   /** Rows = inputs, columns = outputs. Soundcard is kept off the speakers to avoid feedback. */
@@ -207,6 +207,10 @@ export class WebRouter {
 
   private needles: { inL: Element[]; inR: Element[]; outL: Element[]; outR: Element[] } = { inL: [], inR: [], outL: [], outR: [] };
   private built = false;
+  private rxIdle = 0;
+  /** Own tabs, mounted by the host: the receivers (Network, MoIP) and the hardware grid. */
+  private rxEl: HTMLElement | null = null;
+  private hwEl: HTMLElement | null = null;
   private tabKey = '';
   private wasExternal = false;
   private tabInfoEl: Element | null = null;
@@ -278,8 +282,48 @@ export class WebRouter {
     this.wireObserver = new ResizeObserver(() => this.queueWires());
     const tbl = this.container.querySelector('.wr-grid');
     if (tbl) this.wireObserver.observe(tbl);
-    this.hw?.destroy();
-    this.hw = new HwOutputs(q('#wrHw') as HTMLElement, this.daemonUrl).mount();
+    this.mountHw();
+    return this;
+  }
+
+  /** The hardware grid (TAP outputs → sound cards) in its own tab. */
+  mountHardware(el: HTMLElement): this {
+    this.hwEl = el;
+    el.innerHTML = `<div class="wr-rack"><div class="wr-grid-card wr-hw-card"></div></div>`;
+    this.mountHw();
+    return this;
+  }
+
+  private mountHw(): void {
+    const card = this.hwEl?.querySelector<HTMLElement>('.wr-hw-card');
+    if (!card || this.hw) return;
+    this.hw = new HwOutputs(card, this.daemonUrl).mount();
+  }
+
+  /** The receivers (CH 9 Network, CH 10 MoIP) in their own tab: which flow each one listens to. */
+  mountReceivers(el: HTMLElement): this {
+    this.rxEl = el;
+    const rows = Object.keys(RECEIVERS).map((k) => {
+      const idx = +k;
+      const c = INPUTS[idx];
+      return `<tr>
+        <th class="wr-rx-name" scope="row"><span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span> ${c.name}</th>
+        <td><select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} flow"><option value="">Choose a stream…</option></select></td>
+        <td class="wr-rx-addr" data-rx-addr="${idx}"></td>
+        <td class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<div class="wr-rack"><div class="wr-grid-card wr-rx-card">
+      <table class="wr-rx-table" aria-label="Receivers: the flow each one listens to">
+        <thead><tr><th>RECEIVERS</th><th>flow</th><th>address</th><th>status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div></div>`;
+    el.addEventListener('change', (e) => {
+      const t = e.target as HTMLSelectElement;
+      if (t.dataset?.rxPick !== undefined) this.setReceiver(+t.dataset.rxPick, t.value);
+    });
+    this.rxKey = '';
+    this.renderRx();
     return this;
   }
 
@@ -343,7 +387,7 @@ export class WebRouter {
           for (const [row, rx] of Object.entries(RECEIVERS)) {
             const st = d?.[rx.slot];
             const pt = st?.point;
-            this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source };
+            this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source, ref: pt?.ref != null ? String(pt.ref) : undefined };
             if (st?.active && pt?.ref && !this.rxChoice[+row]) this.rxChoice[+row] = String(pt.ref);
             // Always listening: a chosen stream the TAP is not receiving (restart, reload) is started
             if (!st?.active && this.rxChoice[+row] && Date.now() - (this.rxStartedAt[+row] ?? 0) > 10000) {
@@ -357,7 +401,7 @@ export class WebRouter {
     };
     poll();
     pollRx();
-    this.daemonTimer = window.setInterval(() => { poll(); if (this.container.offsetParent !== null) pollRx(); }, 1500);
+    this.daemonTimer = window.setInterval(() => { poll(); if (this.container.offsetParent !== null || this.rxEl?.offsetParent) pollRx(); else if (++this.rxIdle % 7 === 0) pollRx(); }, 1500);
   }
 
   // ───────────────────────────── markup ─────────────────────────────
@@ -377,9 +421,6 @@ export class WebRouter {
           </table>
           </div>
         </div>
-
-        <!-- Every sound card output on the host and what it listens to (hw-outputs.ts, TAP /api/hw) -->
-        <div class="wr-grid-card wr-hw-card" id="wrHw"></div>
 
       </div>`;
   }
@@ -401,8 +442,7 @@ export class WebRouter {
           </div>
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
           ${idx === IN_SOUNDCARD ? `<select class="wr-rx-pick" data-sc-pick aria-label="${c.name} device"><option value="">Default input</option></select>` : ''}
-          ${isRxRow(idx) ? `<select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} stream"><option value="">Choose a stream…</option></select>
-          <div class="wr-strip-info wr-rx-info" id="wrRxInfo${idx}"></div>` : ''}
+          ${isRxRow(idx) ? `<div class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></div>` : ''}
           ${this.meterPair('wrIn', idx, `<span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span>`)}
         </div>
       </th>${cells}</tr>`;
@@ -633,8 +673,14 @@ export class WebRouter {
     const rx = RECEIVERS[idx];
     const ref = this.rxChoice[idx];
     if (!ref) { this.renderRx(); return; }
+    // Already receiving that flow (or just asked to): play it, don't restart it
+    const cur = this.rxStatus[idx];
+    if (cur?.active && cur.ref === ref) {
+      if (this.activeInput === idx) { this.onPlayFlow?.(rx.flow); this.onFlowHint?.(rx.flow); }
+      return;
+    }
     const name = this.rxStreams.find((s) => s.id === ref)?.name ?? ref;
-    this.rxStatus[idx] = { active: true, status: 'starting' };
+    this.rxStatus[idx] = { active: true, status: 'starting', ref };
     this.renderRx();
     fetch(`${this.daemonUrl}/api/receiver`, {
       method: 'POST',
@@ -653,7 +699,7 @@ export class WebRouter {
     this.rxKey = key;
     for (const k of Object.keys(RECEIVERS)) {
       const idx = +k;
-      const sel = this.container.querySelector<HTMLSelectElement>(`[data-rx-pick="${idx}"]`);
+      const sel = this.rxEl?.querySelector<HTMLSelectElement>(`[data-rx-pick="${idx}"]`);
       const cur = this.rxChoice[idx] ?? '';
       if (sel && fresh && document.activeElement !== sel) {
         const known = this.rxStreams.some((s) => s.id === cur);
@@ -663,11 +709,17 @@ export class WebRouter {
           + this.rxStreams.map((s) => `<option value="${esc(s.id)}" title="${esc(s.addr)}">${esc(s.name)}</option>`).join('');
         sel.value = cur;
       }
-      const info = this.container.querySelector(`#wrRxInfo${idx}`);
       const st = this.rxStatus[idx];
-      if (info) {
-        const txt = !st?.active ? '' : st.error ? st.error : st.status === 'waiting' && st.hint ? st.hint : st.source || st.status || '';
-        info.textContent = txt;
+      const stream = this.rxStreams.find((s) => s.id === cur);
+      const state = !st?.active ? '' : st.error ? st.error : st.status === 'waiting' && st.hint ? st.hint : st.source || st.status || '';
+      const addr = this.rxEl?.querySelector(`[data-rx-addr="${idx}"]`);
+      if (addr) addr.textContent = stream?.addr ?? '';
+      // Receivers tab: the status; router row: the flow it listens to (picked in the Receivers tab)
+      for (const root of [this.container, this.rxEl]) {
+        const info = root?.querySelector(`[data-rx-info="${idx}"]`);
+        if (!info) continue;
+        const inTab = root === this.rxEl;
+        info.textContent = inTab ? state : st?.error ? st.error : (stream?.name ?? cur) || 'no flow · receivers tab';
         info.classList.toggle('wr-rx-error', !!st?.error);
       }
     }
