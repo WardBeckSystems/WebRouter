@@ -96,6 +96,11 @@ export interface WebRouterOptions {
    * meter's INPUT button `meter` (1-4). XTM: assigns that button and plays it.
    */
   onMeterInput?: (meter: number, input: number) => void;
+  /**
+   * A receiver row (CH 9 Network / CH 10 MoIP) was engaged: play the TAP's MXL flow `flowId`
+   * (XTM: puts that flow on the meters).
+   */
+  onPlayFlow?: (flowId: string) => void;
 }
 
 export interface RouterChannel {

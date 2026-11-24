@@ -11,7 +11,8 @@
  * them), but not their control panels: a host can build those against
  * setPod33 / setPod33Config / setBitBuddy / setBitBuddyConfig / onChange.
  *
- * 5 inputs × 7 outputs.
+ * 10 inputs × 10 outputs. CH 9 / CH 10 are dedicated receivers: the TAP joins the
+ * chosen network (AES67 / RAVENNA / SAP) or MoIP stream into its own MXL ring.
  */
 
 import {
@@ -38,7 +39,20 @@ export const INPUTS: RouterChannel[] = [
   { tag: 'CH 6', name: 'POD-33 AES4', sub: 'POD-33 DARS rear AES4 out (100/400/1k)', pill: 'pod' },
   { tag: 'CH 7', name: 'Bit Buddy', sub: 'ABS-1 Bit Spitter', pill: 'abb' },
   { tag: 'CH 8', name: 'Pink / Sweep', sub: 'Noise Reference', pill: 'noise' },
+  // Dedicated receivers: the TAP joins the stream (RTP from its SAP SDP) into its own MXL ring
+  { tag: 'CH 9', name: 'Network', sub: 'AES67 / RAVENNA / SAP stream received by the TAP (MXL flow wbs-network-rx)', pill: 'net' },
+  { tag: 'CH 10', name: 'MoIP', sub: 'MoIP stream received by the TAP (MXL flow wbs-moip-rx)', pill: 'moip' },
 ];
+
+/** Receiver rows: TAP receiver slot and the MXL flow it writes. */
+export const RECEIVERS: Record<number, { slot: 'network' | 'moip'; flow: string }> = {
+  8: { slot: 'network', flow: 'wbs-network-rx' },
+  9: { slot: 'moip', flow: 'wbs-moip-rx' },
+};
+const isRxRow = (i: number) => RECEIVERS[i] !== undefined;
+
+/** A stream the TAP heard announced (SAP), as offered in a receiver's picker. */
+export interface RxStream { id: string; name: string; addr: string }
 
 /**
  * Destinations, by what they really are: the meter's four INPUT buttons (MTR), the sound card
@@ -130,8 +144,10 @@ const expandPod33 = (m: boolean[][]): boolean[][] => [
   ...m.slice(IN_POD33 + 1),
 ];
 const toRow = (r: number | undefined) => (r === undefined || r <= IN_POD33 ? r : r + POD33_OUTS - 1);
+/** …and the receiver rows start unrouted. */
+const withRx = (m: boolean[][]): boolean[][] => [...m, ...Object.keys(RECEIVERS).map(() => new Array(m[0].length).fill(false))];
 const PRESETS: Record<string, { matrix: boolean[][]; select?: number }> = Object.fromEntries(
-  Object.entries(PRESETS_5ROW).map(([k, p]) => [k, { matrix: expandPod33(p.matrix), select: toRow(p.select) }]),
+  Object.entries(PRESETS_5ROW).map(([k, p]) => [k, { matrix: withRx(expandPod33(p.matrix)), select: toRow(p.select) }]),
 );
 
 const cloneMatrix = (m: boolean[][]) => m.map((row) => row.slice());
@@ -144,6 +160,13 @@ export class WebRouter {
   private onFlowHint?: (flowId: string) => void;
   private onOpenFlow?: (flowId: string) => void;
   private onMeterInput?: (meter: number, input: number) => void;
+  private onPlayFlow?: (flowId: string) => void;
+  /** Streams the TAP has heard announced, offered on CH 9 / CH 10. */
+  rxStreams: RxStream[] = [];
+  /** What each receiver row is set to (stream id) and the TAP's word on it. */
+  rxChoice: Record<number, string> = {};
+  rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string }> = {};
+  private rxKey = '';
 
   /** Rows = inputs, columns = outputs. Soundcard is kept off the speakers to avoid feedback. */
   matrix: boolean[][] = cloneMatrix(PRESETS.broadcast.matrix);
@@ -187,6 +210,8 @@ export class WebRouter {
     this.onFlowHint = opts.onFlowHint;
     this.onOpenFlow = opts.onOpenFlow;
     this.onMeterInput = opts.onMeterInput;
+    this.onPlayFlow = opts.onPlayFlow;
+    try { this.rxChoice = JSON.parse(localStorage.getItem('wr.rxChoice') || '{}') || {}; } catch { /* private window */ }
     this.setMeterInputs(this.meterInputs);
     this.exclusive(PRESETS.broadcast.select); // one input per output from the start
   }
@@ -203,10 +228,12 @@ export class WebRouter {
     };
     this.tabInfoEl = q('#wrTabInfo');
     this.tabKey = '';
+    this.rxKey = '';
     this.attachEvents();
     this.refresh();
     this.built = true;
     this.watchDaemon();
+    this.renderRx();
     this.hw?.destroy();
     this.hw = new HwOutputs(q('#wrHw') as HTMLElement, this.daemonUrl).mount();
     return this;
@@ -251,8 +278,34 @@ export class WebRouter {
           if (this.bitBuddyEngaged) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
         });
     };
+    const pollRx = () => {
+      fetch(`${this.daemonUrl}/api/aoip/multicast`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          const sessions: any[] = d?.sap?.sessions ?? [];
+          this.rxStreams = sessions
+            .filter((x) => x.multicast_ip && !x.deleted)
+            .map((x) => ({ id: String(x.session_name || x.id), name: String(x.session_name || x.id), addr: `${x.multicast_ip}:${x.port}` }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          this.renderRx();
+        })
+        .catch(() => {});
+      fetch(`${this.daemonUrl}/api/receiver`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          for (const [row, rx] of Object.entries(RECEIVERS)) {
+            const st = d?.[rx.slot];
+            const pt = st?.point;
+            this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source };
+            if (st?.active && pt?.ref && !this.rxChoice[+row]) this.rxChoice[+row] = String(pt.ref);
+          }
+          this.renderRx();
+        })
+        .catch(() => {});
+    };
     poll();
-    this.daemonTimer = window.setInterval(poll, 1500);
+    pollRx();
+    this.daemonTimer = window.setInterval(() => { poll(); if (this.container.offsetParent !== null) pollRx(); }, 1500);
   }
 
   // ───────────────────────────── markup ─────────────────────────────
@@ -293,6 +346,8 @@ export class WebRouter {
             <button type="button" class="wr-btn-engage" data-in-idx="${idx}">ENGAGE</button>
           </div>
           ${idx === IN_TAB ? `<div class="wr-strip-info" id="wrTabInfo"></div>` : ''}
+          ${isRxRow(idx) ? `<select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} stream"><option value="">Choose a stream…</option></select>
+          <div class="wr-strip-info wr-rx-info" id="wrRxInfo${idx}"></div>` : ''}
           ${renderMeterPair('wrIn', idx)}
         </div>
       </th>${cells}</tr>`;
@@ -328,6 +383,10 @@ export class WebRouter {
     root.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (t.dataset?.outLevel !== undefined) this.setSpeakerLevel(parseFloat(t.value));
+    });
+    root.addEventListener('change', (e) => {
+      const t = e.target as HTMLSelectElement;
+      if (t.dataset?.rxPick !== undefined) this.setReceiver(+t.dataset.rxPick, t.value);
     });
     root.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest('button');
@@ -437,6 +496,7 @@ export class WebRouter {
     if (idx !== IN_BITBUDDY && this.bitBuddyEngaged) this.setBitBuddy(false, false);
     if (isPod33Row(idx)) this.setPod33(true, false);
     else if (idx === IN_BITBUDDY) this.setBitBuddy(true, false);
+    else if (isRxRow(idx)) this.startReceiver(idx);
     else if (audio) {
       if (idx === 0) audio.connectSoundCard();
       else if (idx === 1) audio.connectSystemAudio('browser');
@@ -445,6 +505,67 @@ export class WebRouter {
     this.syncMonitor();
     this.hintFlow();
     this.refresh();
+  }
+
+  /** Pick the stream a receiver row listens to; a live row switches over straight away. */
+  setReceiver(idx: number, streamId: string): void {
+    if (!isRxRow(idx)) return;
+    if (streamId) this.rxChoice[idx] = streamId; else delete this.rxChoice[idx];
+    try { localStorage.setItem('wr.rxChoice', JSON.stringify(this.rxChoice)); } catch { /* ignore */ }
+    if (!streamId) {
+      this.post('/api/receiver', { slot: RECEIVERS[idx].slot, stop: true });
+      this.rxStatus[idx] = { active: false };
+      this.renderRx();
+      return;
+    }
+    if (this.activeInput === idx) this.startReceiver(idx);
+    else this.selectInput(idx);
+  }
+
+  /** Have the TAP receive the row's stream, then play the receiver's MXL flow. */
+  private startReceiver(idx: number): void {
+    const rx = RECEIVERS[idx];
+    const ref = this.rxChoice[idx];
+    if (!ref) { this.renderRx(); return; }
+    const name = this.rxStreams.find((s) => s.id === ref)?.name ?? ref;
+    this.rxStatus[idx] = { active: true, status: 'starting' };
+    this.renderRx();
+    fetch(`${this.daemonUrl}/api/receiver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot: rx.slot, kind: 'aoip', ref, label: name }),
+    }).catch(() => {}).finally(() => {
+      if (this.activeInput === idx) this.onPlayFlow?.(rx.flow);
+    });
+    this.onFlowHint?.(rx.flow);
+  }
+
+  /** Receiver rows: the stream list and what the TAP says about each one. */
+  private renderRx(): void {
+    if (!this.built) return;
+    const key = JSON.stringify([this.rxStreams, this.rxChoice]);
+    const fresh = key !== this.rxKey;
+    this.rxKey = key;
+    for (const k of Object.keys(RECEIVERS)) {
+      const idx = +k;
+      const sel = this.container.querySelector<HTMLSelectElement>(`[data-rx-pick="${idx}"]`);
+      const cur = this.rxChoice[idx] ?? '';
+      if (sel && fresh && document.activeElement !== sel) {
+        const known = this.rxStreams.some((s) => s.id === cur);
+        const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+        sel.innerHTML = `<option value="">${this.rxStreams.length ? 'Choose a stream…' : 'No streams announced'}</option>`
+          + (cur && !known ? `<option value="${esc(cur)}">${esc(cur)} (not heard)</option>` : '')
+          + this.rxStreams.map((s) => `<option value="${esc(s.id)}" title="${esc(s.addr)}">${esc(s.name)}</option>`).join('');
+        sel.value = cur;
+      }
+      const info = this.container.querySelector(`#wrRxInfo${idx}`);
+      const st = this.rxStatus[idx];
+      if (info) {
+        const txt = !st?.active ? '' : st.error ? st.error : st.status === 'waiting' && st.hint ? st.hint : st.source || st.status || '';
+        info.textContent = txt;
+        info.classList.toggle('wr-rx-error', !!st?.error);
+      }
+    }
   }
 
   /** Force a source onto Monitor 1 (speakers) and unmute it. */
@@ -571,7 +692,7 @@ export class WebRouter {
 
   /** True while an MXL flow picked elsewhere (Data view) is the meter source instead of a router input. */
   get externalSource(): boolean {
-    return this.audio?.sourceType === 'mxl';
+    return this.audio?.sourceType === 'mxl' && !isRxRow(this.activeInput);
   }
 
   private isInputLive(i: number): boolean {

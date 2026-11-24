@@ -1539,3 +1539,23 @@ body.theme-mccurdy .wr-level, body.theme-mccurdy-light .wr-level { accent-color:
 .wr-hw-led { width: 7px; height: 7px; border-radius: 50%; flex: none; background: currentColor; opacity: 0.25; margin-left: auto; }
 .wr-hw-led.on { background: #22c55e; opacity: 1; box-shadow: 0 0 6px #22c55e; }
 .wr-hw-off { padding: 10px 12px; font: 600 0.72rem ui-monospace, monospace; opacity: 0.7; }
+
+/* CH 9 / CH 10: dedicated network and MoIP receivers (the TAP joins the stream into an MXL ring) */
+.wr-rack .wr-pill-net { background: #0e7490; color: #fff; }
+.wr-rack .wr-pill-moip { background: #a16207; color: #fff; }
+.wr-rx-pick {
+  grid-column: 1;
+  width: 100%;
+  min-width: 0;
+  margin: 3px 0 0;
+  font: inherit;
+  font-size: 0.66rem;
+  padding: 1px 2px;
+  background: var(--wr-panel, transparent);
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.85;
+}
+.wr-grid .wr-in-strip .wr-rx-info { grid-column: 1; }
+.wr-rx-info.wr-rx-error { color: #dc2626; white-space: normal; }
