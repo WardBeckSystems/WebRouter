@@ -1689,3 +1689,36 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-mix-pan { width: 44px; margin: 0; accent-color: #38bdf8; cursor: ew-resize; }
 .wr-mix-db { opacity: 0.8; min-height: 1em; }
 .wr-mix-n { font-weight: 800; }
+
+/* CH ON: Ward-Beck's round lamp push-button, legend engraved in the lens. Lit = the channel is passing
+   (hot cream centre, red rim, glow); dark = muted, an unlit red lens. Lamp colours are tokens a theme may set. */
+:root {
+  --chon-rim: #ff1f3d;
+  --chon-hot: #fff2d6;
+  --chon-warm: #ffb08a;
+  --chon-glow: rgba(255, 31, 61, 0.55);
+  --chon-ink: rgba(110, 0, 18, 0.85);
+  --chon-dark: #3a0b12;
+  --chon-dark-rim: #5c1420;
+  --chon-dark-ink: rgba(255, 120, 130, 0.35);
+}
+.wr-chon {
+  width: 34px; height: 34px; padding: 0; border-radius: 50%; cursor: pointer;
+  display: grid; place-items: center;
+  border: 2px solid #111; outline-offset: 2px;
+  background: radial-gradient(circle at 50% 45%, var(--chon-dark-rim) 0%, var(--chon-dark) 70%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: background 0.08s, box-shadow 0.08s;
+}
+.wr-chon span {
+  font: 700 7.5px/1 "Helvetica Neue", Arial, sans-serif; letter-spacing: 0.04em; white-space: nowrap;
+  color: var(--chon-dark-ink);
+}
+.wr-chon.lit {
+  background: radial-gradient(circle at 50% 46%, var(--chon-hot) 0%, var(--chon-hot) 26%, var(--chon-warm) 52%, var(--chon-rim) 78%);
+  box-shadow: 0 0 6px 1px var(--chon-glow), 0 0 14px 2px var(--chon-glow), inset 0 0 4px rgba(255, 255, 255, 0.5);
+}
+.wr-chon.lit span { color: var(--chon-ink); text-shadow: 0 0 1px rgba(255, 255, 255, 0.4); }
+.wr-chon:active { transform: scale(0.96); }
+.wr-chon:disabled { cursor: default; opacity: 0.4; }
+

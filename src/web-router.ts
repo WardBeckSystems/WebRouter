@@ -200,6 +200,8 @@ export class WebRouter {
   rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string; channels?: number }> = {};
   /** AMS-81 fold-down per receiver slot, and which rows show their preset's mix grid */
   private ams81: Record<string, Ams81> = {};
+  /** Where a switched-off channel's fader and pan were (slot|preset|ch), so CH ON brings it back as it was */
+  private amsMem: Record<string, { level: number; pan: number }> = {};
   private rxKey = '';
 
   /** Rows = inputs, columns = outputs. Soundcard is kept off the speakers to avoid feedback. */
@@ -438,9 +440,11 @@ export class WebRouter {
       if (!mix) return;
       const lvl = +strip.querySelector<HTMLInputElement>('[data-mix="lvl"]')!.value;
       const pan = +strip.querySelector<HTMLInputElement>('[data-mix="pan"]')!.value;
-      const [l, r] = panToLR(lvl <= FADER_OFF ? null : lvl, pan);
       const val = strip.querySelector('.wr-mix-db');
-      if (val) val.textContent = lvl <= FADER_OFF ? 'off' : `${lvl > 0 ? '+' : ''}${lvl}`;
+      if (val) val.textContent = lvl <= FADER_OFF ? '' : `${lvl > 0 ? '+' : ''}${lvl}`;
+      const memKey = `${RECEIVERS[idx].slot}|${preset}|${ch}`;
+      if (strip.dataset.on !== '1') { this.amsMem[memKey] = { level: lvl, pan }; return; }
+      const [l, r] = panToLR(lvl <= FADER_OFF ? null : lvl, pan);
       for (const [side, db] of [['L', l], ['R', r]] as const) {
         if (mix[side][ch - 1] === db) continue;
         mix[side][ch - 1] = db;
@@ -460,6 +464,40 @@ export class WebRouter {
       if (!t.dataset?.mix) return;
       t.value = '0';
       sendMix(t);
+    });
+    // CH ON: the lit lamp passes the channel; dark mutes it and keeps the fader and pan for its return
+    el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-mix-on]');
+      const strip = b?.closest<HTMLElement>('[data-mix-ch]');
+      const grid = b?.closest<HTMLElement>('[data-ams-grid]');
+      if (!b || !strip || !grid || b.disabled) return;
+      const idx = +grid.dataset.amsGrid!, ch = +strip.dataset.mixCh!;
+      const a = this.ams81[RECEIVERS[idx].slot];
+      const preset = amsSel(a?.select ?? '');
+      const mix = a?.presets[preset];
+      if (!mix) return;
+      const memKey = `${RECEIVERS[idx].slot}|${preset}|${ch}`;
+      const fader = strip.querySelector<HTMLInputElement>('[data-mix="lvl"]')!;
+      const panEl = strip.querySelector<HTMLInputElement>('[data-mix="pan"]')!;
+      let l: number | null = null, r: number | null = null;
+      if (strip.dataset.on === '1') {
+        this.amsMem[memKey] = { level: +fader.value, pan: +panEl.value };
+      } else {
+        // Back where it was; a fader left at the bottom comes back at 0 dB
+        const lvl = +fader.value <= FADER_OFF ? 0 : +fader.value;
+        fader.value = String(lvl);
+        [l, r] = panToLR(lvl, +panEl.value);
+        delete this.amsMem[memKey];
+      }
+      const on = l !== null || r !== null;
+      strip.dataset.on = on ? '1' : '';
+      b.classList.toggle('lit', on);
+      b.setAttribute('aria-pressed', String(on));
+      for (const [side, db] of [['L', l], ['R', r]] as const) {
+        if (mix[side][ch - 1] === db) continue;
+        mix[side][ch - 1] = db;
+        this.postAms({ slot: RECEIVERS[idx].slot, preset: a!.select === 'Lo/Ro' ? 'LoRo' : a!.select, side, ch, db });
+      }
     });
     if (drawEye) {
       window.setInterval(() => {
@@ -1058,17 +1096,24 @@ export class WebRouter {
       if (!mix || grid.contains(document.activeElement)) continue;
       const pair = AMS_PAIRS.indexOf(sel);
       const chans = pair >= 0 ? [2 * pair, 2 * pair + 1] : Array.from({ length: 8 }, (_, c) => c);
-      const key = JSON.stringify([sel, mix, chs]);
+      const slot = RECEIVERS[idx].slot;
+      const key = JSON.stringify([sel, mix, chs, chans.map((c) => this.amsMem[`${slot}|${sel}|${c + 1}`] ?? null)]);
       if (grid.dataset.key === key) continue;
       grid.dataset.key = key;
       grid.innerHTML = `<div class="wr-mix" aria-label="${sel} mix">${chans.map((c) => {
-        const { level, pan } = lrToPan(mix.L[c], mix.R[c]);
+        const got = lrToPan(mix.L[c], mix.R[c]);
+        const on = got.level !== null;
+        // A dark channel shows where its fader was left (CH ON brings it back there)
+        const mem = on ? null : this.amsMem[`${slot}|${sel}|${c + 1}`];
+        const level = on ? got.level : mem && mem.level > FADER_OFF ? mem.level : null;
+        const pan = on ? got.pan : mem ? mem.pan : got.pan;
         const off = c >= chs;
         const lvl = level === null ? FADER_OFF : Math.max(AMS_MIN, Math.min(AMS_MAX, level));
-        return `<div class="wr-mix-ch${off ? ' wr-mix-none' : ''}" data-mix-ch="${c + 1}">
-          <span class="wr-mix-db">${level === null ? 'off' : `${lvl > 0 ? '+' : ''}${lvl}`}</span>
+        return `<div class="wr-mix-ch${off ? ' wr-mix-none' : ''}" data-mix-ch="${c + 1}" data-on="${on ? '1' : ''}">
+          <span class="wr-mix-db">${level === null ? '' : `${lvl > 0 ? '+' : ''}${lvl}`}</span>
           <input type="range" class="wr-mix-fader" data-mix="lvl" min="${FADER_OFF}" max="${AMS_MAX}" step="0.5" value="${lvl}" aria-label="Channel ${c + 1} level" title="Channel ${c + 1} level (bottom = off; double-click: 0 dB)"${off ? ' disabled' : ''}>
           <input type="range" class="wr-mix-pan" data-mix="pan" min="-1" max="1" step="0.05" value="${pan}" aria-label="Channel ${c + 1} pan" title="Channel ${c + 1}: where it leaves, left … right (double-click: centre)"${off ? ' disabled' : ''}>
+          <button type="button" class="wr-chon${on ? ' lit' : ''}" data-mix-on aria-pressed="${on}" aria-label="Channel ${c + 1} on" title="Channel ${c + 1} on / off"${off ? ' disabled' : ''}><span>CH ON</span></button>
           <span class="wr-mix-n">${c + 1}</span>
         </div>`;
       }).join('')}</div>`;
