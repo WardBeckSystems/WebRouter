@@ -1058,6 +1058,8 @@ export class WebRouter {
     this.route(IN_BITBUDDY, OUT_SPEAKERS, on);
     if (on && !this.daemonOnline) this.audio?.startBitBuddyGenerator(this.spitterAudioConfig());
     else this.audio?.stopBitBuddyGenerator();
+    // With the TAP the spitter plays there: the meters read its flow (else they hear nothing)
+    if (on && this.daemonOnline && this.activeInput === IN_BITBUDDY) this.onPlayFlow?.(FLOW_BITS);
     if (sync) { this.syncMonitor(); this.hintFlow(); this.refresh(); }
   }
 
