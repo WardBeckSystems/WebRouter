@@ -1755,3 +1755,8 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-chon span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .wr-chon:active { transform: scale(0.96); }
 .wr-chon:disabled { cursor: default; opacity: 0.4; }
+
+/* Receiver picker: MXL writers that stopped are dimmed; the data tab's marks in their colours */
+.wr-rx-pick option.wr-rx-idle { color: var(--ink-muted, #64748b); }
+.wr-rx-pick option.wr-rx-meter { color: var(--accent-red, #ff3b30); }
+.wr-rx-pick option.wr-rx-routed { color: #ca8a04; }

@@ -132,7 +132,13 @@ const pgPos = (v: number) => (v - FADER_OFF) / (AMS_MAX - FADER_OFF);
 const pgSet = (t: HTMLInputElement) => t.closest<HTMLElement>('.wr-pg')?.style.setProperty('--pos', String(pgPos(+t.value)));
 
 /** A stream the TAP heard announced (SAP), as offered in a receiver's picker. */
-export interface RxStream { id: string; name: string; addr: string }
+/** A stream a receiver can listen to: an announced AES67 session (id = session name, addr = multicast)
+ *  or an MXL audio flow from any domain (id = `mxl:<flow_id>`, addr = the domain, age / active from the TAP). */
+export interface RxStream { id: string; name: string; addr: string; mxl?: boolean; age?: string; idle?: boolean }
+
+/** A writer's age, compactly: 45s · 29m · 12h · 3d. */
+const shortAge = (sec: number): string =>
+  sec < 60 ? `${Math.floor(sec)}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : sec < 86400 ? `${Math.floor(sec / 3600)}h` : `${Math.floor(sec / 86400)}d`;
 
 /**
  * Destinations, by what they really are: the meter's four INPUT buttons (MTR), the sound card
@@ -249,9 +255,14 @@ export class WebRouter {
   private onPlayFlow?: (flowId: string) => void;
   /** Streams the TAP has heard announced, offered on CH 8 / CH 9. */
   rxStreams: RxStream[] = [];
+  /** Every MXL audio flow in every domain (nested ones too), offered as well. */
+  rxMxl: RxStream[] = [];
+  /** The point on the meters (GET /api/testpoint), as `kind|ref`. */
+  private meterPoint = '';
+  private rxAll(): RxStream[] { return [...this.rxStreams, ...this.rxMxl]; }
   /** What each receiver row is set to (stream id) and the TAP's word on it. */
   rxChoice: Record<number, string> = {};
-  rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string; channels?: number }> = {};
+  rxStatus: Record<number, { active: boolean; kind?: string; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string; channels?: number }> = {};
   /** AMS-81 fold-down per receiver slot, and which rows show their preset's mix grid */
   private ams81: Record<string, Ams81> = {};
   /** Where a switched-off channel's fader and pan were (slot|preset|ch), so CH ON brings it back as it was */
@@ -608,7 +619,7 @@ export class WebRouter {
     }
     if (isRxRow(row) && (col === OUT_REPEATER || col === OUT_NET_LOOP || col === OUT_MOIP_LOOP)) {
       const ref = this.rxChoice[row] ?? '';
-      const s = this.rxStreams.find((x) => x.id === ref);
+      const s = this.rxAll().find((x) => x.id === ref);
       const own = new Set(Object.values(this.tapTx).map((t) => t.addr));
       if ((s && own.has(s.addr)) || /ward-beck|wbs-flow|master bus/i.test(s?.name ?? ref)) return true;
     }
@@ -639,7 +650,7 @@ export class WebRouter {
     }
     if (isRxRow(row)) {
       const ref = this.rxChoice[row] ?? '';
-      return this.rxStreams.find((s) => s.id === ref)?.name || INPUTS[row].name;
+      return this.rxAll().find((s) => s.id === ref)?.name || INPUTS[row].name;
     }
     return INPUTS[row].name;
   }
@@ -728,14 +739,42 @@ export class WebRouter {
           this.renderRx();
         })
         .catch(() => {});
+      // Every audio flow in every MXL domain, nested ones too (a CBC file player's clip-player-audio)
+      fetch(`${this.daemonUrl}/api/status`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          const own = new Set(Object.values(RECEIVERS).flatMap((r) => [r.flow, r.rx]));
+          const seen = new Set<string>();
+          const out: RxStream[] = [];
+          for (const [label, dom] of Object.entries<any>(d?.all_domains ?? {})) {
+            for (const f of dom?.flows ?? []) {
+              const id = String(f?.flow_id ?? f?.id ?? '');
+              const audio = /audio/.test(String(f?.format ?? f?.media_type ?? ''));
+              if (!id || !audio || own.has(id) || seen.has(id)) continue; // a receiver's own flow would loop
+              seen.add(id);
+              out.push({
+                id: `mxl:${id}`, name: String(f.label || id), addr: String(dom?.label || label), mxl: true,
+                age: typeof f.age_sec === 'number' ? shortAge(f.age_sec) : undefined, idle: f.active === false,
+              });
+            }
+          }
+          this.rxMxl = out;
+          this.renderRx();
+        })
+        .catch(() => {});
+      fetch(`${this.daemonUrl}/api/testpoint`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => { const p = d?.point; this.meterPoint = p?.kind && p.ref != null ? `${p.kind}|${p.ref}` : ''; this.renderRx(); })
+        .catch(() => {});
       fetch(`${this.daemonUrl}/api/receiver`, { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => {
           for (const [row, rx] of Object.entries(RECEIVERS)) {
             const st = d?.[rx.slot];
             const pt = st?.point;
-            this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source, ref: pt?.ref != null ? String(pt.ref) : undefined, channels: typeof pt?.channel_count === 'number' ? pt.channel_count : undefined };
-            if (st?.active && pt?.ref && !this.rxChoice[+row]) this.rxChoice[+row] = String(pt.ref);
+            const ref = pt?.ref == null ? undefined : pt.kind === 'mxl' ? `mxl:${pt.ref}` : String(pt.ref);
+            this.rxStatus[+row] = { active: !!st?.active, kind: pt?.kind, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source, ref, channels: typeof pt?.channel_count === 'number' ? pt.channel_count : undefined };
+            if (st?.active && ref && !this.rxChoice[+row]) this.rxChoice[+row] = ref;
             // Always listening: a chosen stream the TAP is not receiving (restart, reload) is started
             if (!st?.active && this.rxChoice[+row] && Date.now() - (this.rxStartedAt[+row] ?? 0) > 10000) {
               this.rxStartedAt[+row] = Date.now();
@@ -1105,14 +1144,15 @@ export class WebRouter {
       if (this.activeInput === idx) { this.onPlayFlow?.(rx.flow); this.onFlowHint?.(rx.flow); }
       return;
     }
-    const name = this.rxStreams.find((s) => s.id === ref)?.name
-      ?? (ref.startsWith('v=') ? /^s=(.*)$/m.exec(ref)?.[1]?.trim() || 'custom SDP' : ref.split('/')[0]);
+    const mxl = ref.startsWith('mxl:');
+    const name = this.rxAll().find((s) => s.id === ref)?.name
+      ?? (mxl ? ref.slice(4) : ref.startsWith('v=') ? /^s=(.*)$/m.exec(ref)?.[1]?.trim() || 'custom SDP' : ref.split('/')[0]);
     this.rxStatus[idx] = { active: true, status: 'starting', ref };
     this.renderRx();
     fetch(`${this.daemonUrl}/api/receiver`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot: rx.slot, kind: 'aoip', ref, label: name }),
+      body: JSON.stringify({ slot: rx.slot, kind: mxl ? 'mxl' : 'aoip', ref: mxl ? ref.slice(4) : ref, label: name }),
     }).catch(() => {}).finally(() => {
       if (this.activeInput === idx) { this.onPlayFlow?.(rx.flow); this.onFlowHint?.(rx.flow); }
     });
@@ -1183,7 +1223,12 @@ export class WebRouter {
   /** Receiver rows: the stream list and what the TAP says about each one. */
   private renderRx(): void {
     if (!this.built) return;
-    const key = JSON.stringify([this.rxStreams, this.rxChoice]);
+    // The data tab's marks: ● METER = on the meters (test point), ⇄ ROUTED = the other receiver listens to it
+    const pointOf = (id: string) => (id.startsWith('mxl:') ? `mxl|${id.slice(4)}` : `aoip|${id}`);
+    const live = Object.keys(RECEIVERS).filter((k) => this.rxStatus[+k]?.active && this.rxStatus[+k]?.ref).map((k) => [+k, this.rxStatus[+k].ref!] as const);
+    const marks = (idx: number, id: string) => [pointOf(id) === this.meterPoint ? '● METER' : '', live.some(([r, ref]) => r !== idx && ref === id) ? '⇄ ROUTED' : ''].filter(Boolean).join(' ');
+    const all = this.rxAll();
+    const key = JSON.stringify([all, this.rxChoice, this.meterPoint, live]);
     const fresh = key !== this.rxKey;
     this.rxKey = key;
     for (const k of Object.keys(RECEIVERS)) {
@@ -1191,17 +1236,25 @@ export class WebRouter {
       const sel = this.rxEl?.querySelector<HTMLSelectElement>(`[data-rx-pick="${idx}"]`);
       const cur = this.rxChoice[idx] ?? '';
       if (sel && fresh && document.activeElement !== sel) {
-        const known = this.rxStreams.some((s) => s.id === cur);
+        const known = all.some((s) => s.id === cur);
         const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
-        const custom = (r: string) => (r.startsWith('v=') ? `Custom SDP (${/^s=(.*)$/m.exec(r)?.[1]?.trim() || 'pasted'})` : /^\d+\.\d+\.\d+\.\d+:\d+/.test(r) ? r.replace(/\//g, ' · ') : `${r} (not heard)`);
-        sel.innerHTML = `<option value="">${this.rxStreams.length ? 'Choose a stream…' : 'No streams announced'}</option>`
+        const opt = (s: RxStream) => {
+          const m = marks(idx, s.id);
+          const cls = [s.idle ? 'wr-rx-idle' : '', m.includes('METER') ? 'wr-rx-meter' : m ? 'wr-rx-routed' : ''].filter(Boolean).join(' ');
+          const tip = s.mxl ? `${s.id.slice(4)} · ${s.addr}${s.age ? ` · writing ${s.age}` : ''}${s.idle ? ' · writer stopped' : ''}` : s.addr;
+          return `<option value="${esc(s.id)}"${cls ? ` class="${cls}"` : ''} title="${esc(tip)}">${esc([s.name, s.age, m].filter(Boolean).join(' · '))}</option>`;
+        };
+        const mxlDomains = [...new Set(this.rxMxl.map((s) => s.addr))];
+        const custom = (r: string) => (r.startsWith('mxl:') ? `${r.slice(4)} (no MXL writer)` : r.startsWith('v=') ? `Custom SDP (${/^s=(.*)$/m.exec(r)?.[1]?.trim() || 'pasted'})` : /^\d+\.\d+\.\d+\.\d+:\d+/.test(r) ? r.replace(/\//g, ' · ') : `${r} (not heard)`);
+        sel.innerHTML = `<option value="">${all.length ? 'Choose a stream…' : 'No streams announced'}</option>`
           + (cur && !known ? `<option value="${esc(cur)}">${esc(custom(cur))}</option>` : '')
-          + this.rxStreams.map((s) => `<option value="${esc(s.id)}" title="${esc(s.addr)}">${esc(s.name)}</option>`).join('')
+          + this.rxStreams.map((s) => opt(s)).join('')
+          + mxlDomains.map((dm) => `<optgroup label="MXL · ${esc(dm)}">${this.rxMxl.filter((s) => s.addr === dm).map((s) => opt(s)).join('')}</optgroup>`).join('')
           + `<option value="__ip">Address : port…</option><option value="__sdp">Paste an SDP…</option>`;
         sel.value = cur;
       }
       const st = this.rxStatus[idx];
-      const stream = this.rxStreams.find((s) => s.id === cur);
+      const stream = all.find((s) => s.id === cur);
       const state = !st?.active ? '' : st.error ? st.error : st.status === 'waiting' && st.hint ? st.hint : st.source || st.status || '';
       const addr = this.rxEl?.querySelector(`[data-rx-addr="${idx}"]`);
       if (addr) addr.textContent = stream?.addr ?? '';
