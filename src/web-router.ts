@@ -75,7 +75,7 @@ export const OUTPUTS: RouterChannel[] = [
   // The four Transmitters
   { tag: 'MXL67-1', name: 'Repeater', sub: 'MXL flow wbs-flow-master-stereo (repeats the routed mix) → /dev/shm/mxl', pill: 'mxl' },
   { tag: 'MXL67-2', name: 'POD-33 1 kHz', sub: 'MXL flow POD-33-1kHz-Reference → /dev/shm/mxl', pill: 'mxl' },
-  { tag: 'MXL67-3', name: 'POD-33 400 / 100 Hz', sub: 'MXL flow POD-33-400Hz-Alignment / POD-33-100Hz-LowEnd (click the name to switch) → /dev/shm/mxl', pill: 'mxl' },
+  { tag: 'MXL67-3', name: 'POD-33 400 / 100 Hz', sub: 'MXL flow wbs-flow-ref-tone-low, 400 or 100 Hz (click the name to switch) → /dev/shm/mxl', pill: 'mxl' },
   { tag: 'MXL67-4', name: 'Bit Spitter', sub: 'MXL flow wbs-flow-bit-spitter → /dev/shm/mxl', pill: 'mxl' },
 ];
 
@@ -85,10 +85,9 @@ const SHORT_OUT = ['Input 1', 'Input 2', 'Input 3', 'Input 4', 'Speakers', 'Cue/
 const MXL_FLOW: Record<number, string> = {
   6: 'wbs-flow-master-stereo',
   7: 'wbs-flow-ref-tone',
+  8: 'wbs-flow-ref-tone-low', // 400 or 100 Hz (its switch)
   9: 'wbs-flow-bit-spitter',
 };
-const FLOW_400 = '25030044-0440-4416-8000-000000000003';
-const FLOW_100 = '25030044-0440-4416-8000-000000000004';
 
 /** Column indices with special meaning. */
 const METERS = 4; // columns 0-3: Meter Input 1-4
@@ -660,13 +659,14 @@ export class WebRouter {
       if (d.outDim !== undefined) return this.toggleOut('dim', +d.outDim);
       if (d.lowHz !== undefined) {
         this.pod33LowHz = this.pod33LowHz === 400 ? 100 : 400;
+        this.post('/api/mxl/low_tone', { hz: this.pod33LowHz }); // the TAP's MXL67-3 flow follows
         const el = root.querySelector('#wrLowHz');
         if (el) el.textContent = `${this.pod33LowHz} Hz`;
         return;
       }
       if (d.openFlow !== undefined) {
         const col = +d.openFlow;
-        const flow = col === OUT_POD33_LOW ? (this.pod33LowHz === 400 ? FLOW_400 : FLOW_100) : MXL_FLOW[col];
+        const flow = MXL_FLOW[col];
         if (flow) this.onOpenFlow?.(flow);
         return;
       }
