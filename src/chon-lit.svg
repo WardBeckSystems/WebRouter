@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 40 520 520" width="520" height="520">
+  <!-- Copyright (c) 2026 Ward-Beck Systems (Ward-Beck.com - Ward-Beck.ca). All rights reserved. -->
+  <!-- CH ON lamp push-button, lit: hot cream centre, red rim, legend engraved in the lens, glow spilling onto the panel -->
+  <defs>
+    <radialGradient id="outer-spill" cx="50%" cy="50%" r="48%">
+      <stop offset="66%" stop-color="#ff0624" stop-opacity="0.72" />
+      <stop offset="77%" stop-color="#e0001b" stop-opacity="0.28" />
+      <stop offset="89%" stop-color="#850010" stop-opacity="0.06" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="dome-fill" cx="51%" cy="48%" r="51%" fx="52%" fy="46%">
+      <stop offset="0%" stop-color="#ffe2bd" />
+      <stop offset="25%" stop-color="#ffba85" />
+      <stop offset="53%" stop-color="#ff7250" />
+      <stop offset="76%" stop-color="#ff1c35" />
+      <stop offset="91%" stop-color="#e80022" />
+      <stop offset="100%" stop-color="#990016" />
+    </radialGradient>
+    <radialGradient id="edge-vignette" cx="50%" cy="50%" r="50%">
+      <stop offset="76%" stop-color="#ff001e" stop-opacity="0" />
+      <stop offset="90%" stop-color="#c40019" stop-opacity="0.35" />
+      <stop offset="97%" stop-color="#59000a" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#1f0003" stop-opacity="0.92" />
+    </radialGradient>
+    <linearGradient id="dome-sheen" x1="18%" y1="12%" x2="88%" y2="88%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22" />
+      <stop offset="40%" stop-color="#ffd9c7" stop-opacity="0.08" />
+      <stop offset="70%" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="100%" stop-color="#ffeae0" stop-opacity="0.24" />
+    </linearGradient>
+    <filter id="lamp-glow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur stdDeviation="8" />
+    </filter>
+    <filter id="halo-blur" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="15" />
+    </filter>
+    <filter id="legend-shade" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#4a0007" flood-opacity="0.7" />
+      <feDropShadow dx="0" dy="-1" stdDeviation="0.8" flood-color="#ffd2b3" flood-opacity="0.45" />
+    </filter>
+    <clipPath id="circle-cap">
+      <circle cx="300" cy="300" r="226" />
+    </clipPath>
+  </defs>
+  <circle cx="300" cy="300" r="250" fill="url(#outer-spill)" filter="url(#halo-blur)" />
+  <g clip-path="url(#circle-cap)">
+    <circle cx="300" cy="300" r="226" fill="url(#dome-fill)" />
+    <circle cx="304" cy="296" r="142" fill="#ffebd0" opacity="0.45" filter="url(#lamp-glow)" />
+    <circle cx="300" cy="300" r="226" fill="url(#edge-vignette)" />
+    <g transform="translate(300 300) scale(0.78) translate(-325 -300)" filter="url(#legend-shade)" fill="none" stroke="#960414" stroke-width="17.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 183 275 A 27 32 0 1 0 183 325" />
+      <path d="M 226 266 L 226 334" />
+      <path d="M 271 266 L 271 334" />
+      <path d="M 226 299 L 271 299" />
+      <ellipse cx="388" cy="300" rx="25" ry="34" />
+      <path d="M 447 334 L 447 266 L 494 334 L 494 266" />
+    </g>
+    <path d="M 412 108 A 220 220 0 0 1 486 172" fill="none" stroke="#ffd8cc" stroke-width="4.5" stroke-linecap="round" opacity="0.62" />
+    <path d="M 518 272 A 220 220 0 0 1 508 352" fill="none" stroke="#ffeae3" stroke-width="4" stroke-linecap="round" opacity="0.7" />
+    <path d="M 114 172 A 220 220 0 0 1 198 102" fill="none" stroke="#ff99a8" stroke-width="3" stroke-linecap="round" opacity="0.32" />
+    <circle cx="300" cy="300" r="226" fill="url(#dome-sheen)" />
+  </g>
+  <circle cx="300" cy="300" r="226" fill="none" stroke="#360005" stroke-width="2.5" opacity="0.85" />
+</svg>

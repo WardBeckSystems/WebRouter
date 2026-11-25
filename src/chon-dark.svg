@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 40 520 520" width="520" height="520">
+  <!-- Copyright (c) 2026 Ward-Beck Systems (Ward-Beck.com - Ward-Beck.ca). All rights reserved. -->
+  <!-- CH ON lamp push-button, unlit: a dark red lens, legend engraved, sitting in its bezel shadow -->
+  <defs>
+    <radialGradient id="bezel-shadow" cx="50%" cy="51%" r="45%">
+      <stop offset="82%" stop-color="#000000" stop-opacity="0.92" />
+      <stop offset="93%" stop-color="#080606" stop-opacity="0.55" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="unlit-dome" cx="46%" cy="40%" r="58%" fx="44%" fy="36%">
+      <stop offset="0%" stop-color="#6b0c16" />
+      <stop offset="32%" stop-color="#520810" />
+      <stop offset="68%" stop-color="#360409" />
+      <stop offset="90%" stop-color="#210205" />
+      <stop offset="100%" stop-color="#120102" />
+    </radialGradient>
+    <radialGradient id="internal-housing" cx="50%" cy="52%" r="42%">
+      <stop offset="0%" stop-color="#2b060a" stop-opacity="0.65" />
+      <stop offset="65%" stop-color="#1a0204" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#0d0102" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="unlit-edge" cx="50%" cy="50%" r="50%">
+      <stop offset="76%" stop-color="#1a0103" stop-opacity="0" />
+      <stop offset="90%" stop-color="#140002" stop-opacity="0.5" />
+      <stop offset="97%" stop-color="#0a0001" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#030000" stop-opacity="0.96" />
+    </radialGradient>
+    <linearGradient id="unlit-sheen" x1="15%" y1="8%" x2="85%" y2="92%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.16" />
+      <stop offset="32%" stop-color="#ffccd2" stop-opacity="0.06" />
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0" />
+      <stop offset="100%" stop-color="#ffd6dc" stop-opacity="0.09" />
+    </linearGradient>
+    <filter id="unlit-legend-shade" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="1.4" stdDeviation="1.1" flood-color="#080001" flood-opacity="0.85" />
+      <feDropShadow dx="0" dy="-0.9" stdDeviation="0.7" flood-color="#8f2430" flood-opacity="0.32" />
+    </filter>
+    <filter id="contact-blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" />
+    </filter>
+    <clipPath id="circle-cap">
+      <circle cx="300" cy="300" r="226" />
+    </clipPath>
+  </defs>
+  <circle cx="300" cy="304" r="236" fill="url(#bezel-shadow)" filter="url(#contact-blur)" />
+  <g clip-path="url(#circle-cap)">
+    <circle cx="300" cy="300" r="226" fill="url(#unlit-dome)" />
+    <circle cx="300" cy="304" r="145" fill="url(#internal-housing)" />
+    <circle cx="300" cy="300" r="226" fill="url(#unlit-edge)" />
+    <g transform="translate(300 300) scale(0.78) translate(-325 -300)" filter="url(#unlit-legend-shade)" fill="none" stroke="#240206" stroke-width="17.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M 183 275 A 27 32 0 1 0 183 325" />
+      <path d="M 226 266 L 226 334" />
+      <path d="M 271 266 L 271 334" />
+      <path d="M 226 299 L 271 299" />
+      <ellipse cx="388" cy="300" rx="25" ry="34" />
+      <path d="M 447 334 L 447 266 L 494 334 L 494 266" />
+    </g>
+    <path d="M 114 172 A 220 220 0 0 1 205 98" fill="none" stroke="#ffb3be" stroke-width="3.5" stroke-linecap="round" opacity="0.24" />
+    <path d="M 412 108 A 220 220 0 0 1 486 172" fill="none" stroke="#ffccd4" stroke-width="4" stroke-linecap="round" opacity="0.32" />
+    <path d="M 518 272 A 220 220 0 0 1 508 352" fill="none" stroke="#ffd9df" stroke-width="3.5" stroke-linecap="round" opacity="0.36" />
+    <circle cx="300" cy="300" r="226" fill="url(#unlit-sheen)" />
+  </g>
+  <circle cx="300" cy="300" r="226" fill="none" stroke="#1f0508" stroke-width="2.5" opacity="0.9" />
+</svg>
