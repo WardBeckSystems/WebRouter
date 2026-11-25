@@ -77,6 +77,8 @@ export interface MeterArt {
   window: [number, number, number, number, number];
   /** host's needle law: VU dB (0 = 0 VU, +3 = full scale) → degrees from vertical */
   angle: (db: number) => number;
+  /** id of a housing drawn outside the meter group (e.g. a skin's bezel), copied in behind it */
+  under?: string;
 }
 
 /** The host's meter in miniature, with this strip's two needles (L black, R red). */
@@ -108,8 +110,14 @@ export function renderArtMeterPair(prefix: string, idx: number, art: MeterArt, o
 export function artTemplate(art: MeterArt): { src: Element; tpl: Element } | null {
   const src = document.getElementById(art.href);
   if (!src) return null;
-  const tpl = src.cloneNode(true) as Element;
-  tpl.querySelector(`#${CSS.escape(art.needle)}`)?.remove();
+  const meter = src.cloneNode(true) as Element;
+  meter.querySelector(`#${CSS.escape(art.needle)}`)?.remove();
+  const housing = art.under ? document.getElementById(art.under)?.cloneNode(true) as Element | undefined : undefined;
+  let tpl = meter;
+  if (housing) {
+    tpl = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    tpl.append(housing, meter);
+  }
   tpl.querySelectorAll('title').forEach((t) => t.remove());
   for (const el of [tpl, ...Array.from(tpl.querySelectorAll('*'))]) {
     el.removeAttribute('id');

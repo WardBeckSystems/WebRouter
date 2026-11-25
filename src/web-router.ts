@@ -77,9 +77,12 @@ export const OUTPUTS: RouterChannel[] = [
   { tag: 'MXL67-2', name: 'POD-33 1 kHz', sub: 'MXL flow POD-33-1kHz-Reference → /dev/shm/mxl', pill: 'mxl' },
   { tag: 'MXL67-3', name: 'POD-33 400 / 100 Hz', sub: 'MXL flow wbs-flow-ref-tone-low, 400 or 100 Hz (click the name to switch) → /dev/shm/mxl', pill: 'mxl' },
   { tag: 'MXL67-4', name: 'Bit Spitter', sub: 'MXL flow wbs-flow-bit-spitter → /dev/shm/mxl', pill: 'mxl' },
+  // Loop outs: the receivers' stereo fold-downs sent on again
+  { tag: 'MXL67-5', name: 'Network loop out', sub: 'MXL flow wbs-network-ams81 (CH 8 Network, its AMS-81 fold-down) → AES67', pill: 'mxl' },
+  { tag: 'MXL67-6', name: 'MoIP loop out', sub: 'MXL flow wbs-moip-ams81 (CH 9 MoIP, its AMS-81 fold-down) → AES67', pill: 'mxl' },
 ];
 
-const SHORT_OUT = ['Input 1', 'Input 2', 'Input 3', 'Input 4', 'Speakers', 'Cue/HP', 'Repeater', '1 kHz', '400 Hz', 'Bit Spitter'];
+const SHORT_OUT = ['Input 1', 'Input 2', 'Input 3', 'Input 4', 'Speakers', 'Cue/HP', 'Repeater', '1 kHz', '400 Hz', 'Bit Spitter', 'Network out', 'MoIP out'];
 
 /** The MXL flow each transmitter column writes (MXL 3 follows its 400 / 100 Hz switch). */
 const MXL_FLOW: Record<number, string> = {
@@ -87,6 +90,8 @@ const MXL_FLOW: Record<number, string> = {
   7: 'wbs-flow-ref-tone',
   8: 'wbs-flow-ref-tone-low', // 400 or 100 Hz (its switch)
   9: 'wbs-flow-bit-spitter',
+  10: 'wbs-network-ams81',
+  11: 'wbs-moip-ams81',
 };
 
 /** Column indices with special meaning. */
@@ -97,6 +102,8 @@ const OUT_REPEATER = 6;
 const OUT_POD33 = 7;
 const OUT_POD33_LOW = 8; // 400 / 100 Hz, switchable
 const OUT_BITS = 9;
+const OUT_NET_LOOP = 10;
+const OUT_MOIP_LOOP = 11;
 const IN_POD33 = 2; // POD-33 AES1; AES2-4 are the next three rows
 const POD33_OUTS = 4;
 const IN_BITBUDDY = IN_POD33 + POD33_OUTS;
@@ -154,7 +161,7 @@ const PRESETS: Record<string, { matrix: boolean[][]; select?: number }> = Object
   Object.entries(PRESETS_4ROW).map(([k, p]) => [k, { matrix: withRx(expandPod33(p.matrix)), select: toRow(p.select) }]),
 );
 
-const cloneMatrix = (m: boolean[][]) => m.map((row) => row.slice());
+const cloneMatrix = (m: boolean[][]) => m.map((row) => [...row, ...new Array(Math.max(0, OUTPUTS.length - row.length)).fill(false)]);
 
 export class WebRouter {
   readonly container: HTMLElement;
@@ -450,6 +457,7 @@ export class WebRouter {
     if (this.feedback(row, col)) return false;
     if (col === OUT_POD33 || col === OUT_POD33_LOW) return isPod33Row(row);
     if (col === OUT_BITS) return row === IN_BITBUDDY;
+    if (col === OUT_NET_LOOP || col === OUT_MOIP_LOOP) return row === (col === OUT_NET_LOOP ? 7 : 8); // each loop out takes its own receiver
     return true;
   }
 
@@ -464,12 +472,67 @@ export class WebRouter {
       const label = this.scInputs.find((d) => d.id === this.scDevice)?.label ?? '';
       if (/monitor of|loopback|ward-beck tap/i.test(label)) return true;
     }
-    if (isRxRow(row) && col === OUT_REPEATER) {
+    if (isRxRow(row) && (col === OUT_REPEATER || col === OUT_NET_LOOP || col === OUT_MOIP_LOOP)) {
       const ref = this.rxChoice[row] ?? '';
-      const name = this.rxStreams.find((s) => s.id === ref)?.name ?? ref;
-      if (/ward-beck|wbs-flow|master bus/i.test(name)) return true;
+      const s = this.rxStreams.find((x) => x.id === ref);
+      const own = new Set(Object.values(this.tapTx).map((t) => t.addr));
+      if ((s && own.has(s.addr)) || /ward-beck|wbs-flow|master bus/i.test(s?.name ?? ref)) return true;
     }
     return false;
+  }
+
+  /** The TAP's AES67 transmitters by flow: the name it announces (null: an older TAP that takes no
+   *  names) and the multicast address it sends to. */
+  private tapTx: Record<string, { name: string | null; addr: string }> = {};
+
+  /** What feeds router input `row`, by name: the shared tab's title, the tone and level, the stream. */
+  private sourceName(row: number): string {
+    const hz = (f: number) => (f >= 1000 ? `${f / 1000} kHz` : `${f} Hz`);
+    if (row === IN_SOUNDCARD) {
+      const l = this.scInputs.find((d) => d.id === this.scDevice)?.label;
+      return l ? l.replace(/^monitor of /i, '') : INPUTS[row].name;
+    }
+    if (row === IN_TAB) return this.tabInfo?.title || INPUTS[row].name;
+    if (isPod33Row(row)) {
+      const o = this.pod33Outputs[row - IN_POD33];
+      const f = !o.freq ? 'silence' : o.freqR && o.freqR !== o.freq ? `${hz(o.freq)}/${hz(o.freqR)}` : hz(o.freq);
+      return `${INPUTS[row].name} ${f}${o.freq && o.levelDb > -100 ? ` ${o.levelDb} dBFS` : ''}`;
+    }
+    if (row === IN_BITBUDDY) {
+      const b = this.bitBuddyConfig;
+      const what = b.pattern === 'tone' ? hz(b.tone) : b.pattern === 'file' ? (b.fileName || 'file') : b.pattern;
+      return `Bit Spitter ${what}`;
+    }
+    if (isRxRow(row)) {
+      const ref = this.rxChoice[row] ?? '';
+      return this.rxStreams.find((s) => s.id === ref)?.name || INPUTS[row].name;
+    }
+    return INPUTS[row].name;
+  }
+
+  /** Each transmitter's name, inherited from what is routed into it (else what it carries). */
+  transmitterNames(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [c, flow] of Object.entries(MXL_FLOW)) {
+      const col = +c;
+      const rows = INPUTS.map((_, r) => r).filter((r) => this.matrix[r][col] && this.canRoute(r, col));
+      const fallback = col === OUT_POD33_LOW ? `POD-33 ${this.pod33LowHz} Hz` : col === OUT_BITS ? this.sourceName(IN_BITBUDDY) : OUTPUTS[col].name;
+      let name = rows.length ? rows.map((r) => this.sourceName(r)).join(' + ') : fallback;
+      if (col === OUT_POD33_LOW && rows.length) name = `${INPUTS[rows[0]].name} ${this.pod33LowHz} Hz`;
+      out[flow] = name.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 64);
+    }
+    return out;
+  }
+
+  /** Tell the TAP any transmitter name that changed (its SDP, SAP and Bonjour follow). */
+  private syncTxNames(): void {
+    if (!this.daemonOnline) return;
+    for (const [flow, name] of Object.entries(this.transmitterNames())) {
+      const tx = this.tapTx[flow];
+      if (!tx || tx.name === null || tx.name === name) continue; // an older TAP takes no names
+      tx.name = name;
+      this.post('/api/aes67', { flow_id: flow, name });
+    }
   }
 
   /** The TAP went away: stop every generator, drop the routes it carried, back to tab / sound card. */
@@ -511,6 +574,15 @@ export class WebRouter {
         });
     };
     const pollRx = () => {
+      // The TAP's AES67 transmitters: their names follow what is routed into them
+      fetch(`${this.daemonUrl}/api/aes67`, { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          const txs: any[] = Array.isArray(d?.transmitters) ? d.transmitters : [];
+          this.tapTx = Object.fromEntries(txs.map((t) => [String(t.flow_id), { name: typeof t.name === 'string' ? t.name : null, addr: `${t.multicast_ip}:${t.port}` }]));
+          this.syncTxNames();
+        })
+        .catch(() => {});
       fetch(`${this.daemonUrl}/api/aoip/multicast`, { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => {
@@ -667,6 +739,7 @@ export class WebRouter {
         this.post('/api/mxl/low_tone', { hz: this.pod33LowHz }); // the TAP's MXL67-3 flow follows
         const el = root.querySelector('#wrLowHz');
         if (el) el.textContent = `${this.pod33LowHz} Hz`;
+        this.syncTxNames();
         return;
       }
       if (d.openFlow !== undefined) {
@@ -1214,6 +1287,7 @@ export class WebRouter {
     });
 
     this.queueWires();
+    this.syncTxNames();
     this.listeners.forEach((cb) => cb(this));
   }
 
