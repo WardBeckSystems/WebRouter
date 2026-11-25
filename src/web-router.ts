@@ -408,41 +408,39 @@ export class WebRouter {
   /** The receivers (CH 9 Network, CH 10 MoIP) in their own tab: which flow each one listens to,
    *  an eye on its ring (drawEye from the host), and a stream entered by hand (address : port,
    *  or a pasted SDP). */
-  mountReceivers(el: HTMLElement, drawEye?: (canvas: HTMLCanvasElement, flowId: string) => void): this {
+  mountReceivers(el: HTMLElement, drawEye?: (canvas: HTMLCanvasElement, flowId: string) => void,
+    meters?: (host: HTMLElement, flowId: string) => (() => void)): this {
     this.rxEl = el;
     const rows = Object.keys(RECEIVERS).map((k) => {
       const idx = +k;
       const c = INPUTS[idx];
-      return `<tr>
-        <td class="wr-rx-eye" rowspan="2">${drawEye ? `<canvas width="120" height="120" data-rx-eye="${RECEIVERS[idx].rx}" aria-label="${c.name} ring"></canvas>` : ''}</td>
-        <th class="wr-rx-name" scope="row"><span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span> ${c.name}</th>
-        <td>
-          <select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} flow"><option value="">Choose a stream…</option></select>
-          <div class="wr-rx-custom" data-rx-custom="${idx}" hidden>
-            <span data-rx-ip-row><input type="text" class="wr-rx-in" data-rx-ip="${idx}" placeholder="239.1.2.3:5004" aria-label="${c.name} multicast address and port" spellcheck="false">
-              <select class="wr-rx-in" data-rx-ch="${idx}" aria-label="channels">${[1, 2, 4, 8, 16].map((n) => `<option value="${n}"${n === 2 ? ' selected' : ''}>${n} ch</option>`).join('')}</select>
-              <select class="wr-rx-in" data-rx-enc="${idx}" aria-label="encoding"><option>L24</option><option>L16</option></select></span>
-            <textarea class="wr-rx-in wr-rx-sdp" data-rx-sdp="${idx}" rows="6" placeholder="v=0&#10;o=- 1 1 IN IP4 192.168.1.10&#10;s=My stream&#10;c=IN IP4 239.1.2.3/32&#10;t=0 0&#10;m=audio 5004 RTP/AVP 96&#10;a=rtpmap:96 L24/48000/8&#10;a=ptime:1" aria-label="${c.name} SDP" spellcheck="false"></textarea>
-            <button type="button" class="wr-rx-go" data-rx-go="${idx}">Listen</button>
+      return `<section class="wr-grid-card wr-rx-card" aria-label="${c.name} receiver">
+        <div class="wr-rx-head">
+          ${drawEye ? `<canvas class="wr-rx-eye" width="120" height="120" data-rx-eye="${RECEIVERS[idx].rx}" aria-label="${c.name} ring"></canvas>` : ''}
+          ${meters ? `<div class="wr-rx-meters" data-rx-meters="${RECEIVERS[idx].rx}" aria-label="${c.name} channel meters"></div>` : ''}
+          <div class="wr-rx-body">
+            <div class="wr-rx-name"><span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span> ${c.name}</div>
+            <select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} flow"><option value="">Choose a stream…</option></select>
+            <div class="wr-rx-custom" data-rx-custom="${idx}" hidden>
+              <span data-rx-ip-row><input type="text" class="wr-rx-in" data-rx-ip="${idx}" placeholder="239.1.2.3:5004" aria-label="${c.name} multicast address and port" spellcheck="false">
+                <select class="wr-rx-in" data-rx-ch="${idx}" aria-label="channels">${[1, 2, 4, 8, 16].map((n) => `<option value="${n}"${n === 2 ? ' selected' : ''}>${n} ch</option>`).join('')}</select>
+                <select class="wr-rx-in" data-rx-enc="${idx}" aria-label="encoding"><option>L24</option><option>L16</option></select></span>
+              <textarea class="wr-rx-in wr-rx-sdp" data-rx-sdp="${idx}" rows="6" placeholder="v=0&#10;o=- 1 1 IN IP4 192.168.1.10&#10;s=My stream&#10;c=IN IP4 239.1.2.3/32&#10;t=0 0&#10;m=audio 5004 RTP/AVP 96&#10;a=rtpmap:96 L24/48000/8&#10;a=ptime:1" aria-label="${c.name} SDP" spellcheck="false"></textarea>
+              <button type="button" class="wr-rx-go" data-rx-go="${idx}">Listen</button>
+            </div>
+            <div class="wr-rx-addr" data-rx-addr="${idx}"></div>
+            <div class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></div>
           </div>
-        </td>
-        <td class="wr-rx-addr" data-rx-addr="${idx}"></td>
-        <td class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></td>
-      </tr>
-      <tr class="wr-ams-row"><td colspan="4">
+        </div>
         <div class="wr-ams" data-ams="${idx}" aria-label="${c.name} AMS-81 fold-down">
           <span class="wr-ams-tag">AMS-81</span>
           <div class="wr-ams-btns">${AMS_PAIRS.map((v) => `<button type="button" class="wr-ams-btn" data-ams-sel="${v}" aria-pressed="false"><span>${v}</span></button>`).join('')}</div>
-          <div class="wr-ams-btns">${[...AMS_PRESETS, 'LoRo'].map((v) => `<button type="button" class="wr-ams-btn" data-ams-sel="${v}" aria-pressed="false"><span>${v === 'LoRo' ? 'Lo/Ro' : v}</span></button>`).join('')}</div>
+          <div class="wr-ams-btns">${[...AMS_PRESETS, 'LoRo'].map((v) => `<button type="button" class="wr-ams-btn${v === 'LoRo' ? '' : ' wr-ams-preset'}" data-ams-sel="${v}" aria-pressed="false"><span>${v === 'LoRo' ? 'Lo/Ro' : v}</span></button>`).join('')}</div>
         </div>
         <div class="wr-ams-grid" data-ams-grid="${idx}" hidden></div>
-      </td></tr>`;
+      </section>`;
     }).join('');
-    el.innerHTML = `<div class="wr-rack"><div class="wr-grid-card wr-rx-card">
-      <table class="wr-rx-table" aria-label="Receivers: the flow each one listens to">
-        <thead><tr><th></th><th>RECEIVERS</th><th>flow</th><th>address</th><th>status</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div></div>`;
+    el.innerHTML = `<div class="wr-rack"><div class="wr-rx-pair" aria-label="Receivers: the flow each one listens to">${rows}</div></div>`;
     el.addEventListener('change', (e) => {
       const t = e.target as HTMLSelectElement;
       if (t.dataset?.rxPick === undefined) return;
@@ -567,6 +565,12 @@ export class WebRouter {
         this.postAms({ slot: RECEIVERS[idx].slot, preset: a!.select === 'Lo/Ro' ? 'LoRo' : a!.select, side, ch, db });
       }
     });
+    // The channel meters beside the eye: the host builds them and hands back a per-frame update
+    if (meters) {
+      const ticks = [...el.querySelectorAll<HTMLElement>('[data-rx-meters]')].map((h) => meters(h, h.dataset.rxMeters!));
+      const frame = () => { if (el.offsetParent !== null) ticks.forEach((t) => t()); requestAnimationFrame(frame); };
+      requestAnimationFrame(frame);
+    }
     if (drawEye) {
       window.setInterval(() => {
         if (el.offsetParent === null) return;
@@ -750,7 +754,7 @@ export class WebRouter {
             for (const f of dom?.flows ?? []) {
               const id = String(f?.flow_id ?? f?.id ?? '');
               const audio = /audio/.test(String(f?.format ?? f?.media_type ?? ''));
-              if (!id || !audio || own.has(id) || seen.has(id)) continue; // a receiver's own flow would loop
+              if (!id || !audio || own.has(id) || seen.has(id) || f.home === false) continue; // a receiver's own flow would loop
               seen.add(id);
               out.push({
                 id: `mxl:${id}`, name: String(f.label || id), addr: String(dom?.label || label), mxl: true,
