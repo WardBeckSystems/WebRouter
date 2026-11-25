@@ -57,6 +57,26 @@ const AMS_PRESETS = ['A', 'B', 'C', 'D'];
 const amsSel = (v: string) => (v === 'Lo/Ro' ? 'LoRo' : v);
 const isRxRow = (i: number) => RECEIVERS[i] !== undefined;
 
+/** AMS-81 per-side gains are -15…+15 dB or off; the mixer shows them as a level and a pan. */
+const AMS_MIN = -15, AMS_MAX = 15, FADER_OFF = -16;
+/** Level (dB, null = off) and pan (-1 L … +1 R, constant power: centre is -3 dB a side) → L / R dB. */
+function panToLR(level: number | null, pan: number): [number | null, number | null] {
+  if (level === null) return [null, null];
+  const t = ((Math.max(-1, Math.min(1, pan)) + 1) * Math.PI) / 4;
+  const side = (g: number) => {
+    const db = level + 20 * Math.log10(Math.max(g, 1e-9));
+    return db < AMS_MIN ? null : Math.round(Math.min(AMS_MAX, db) * 10) / 10;
+  };
+  return [side(Math.cos(t)), side(Math.sin(t))];
+}
+/** L / R dB → level and pan (the inverse of panToLR). */
+function lrToPan(l: number | null, r: number | null): { level: number | null; pan: number } {
+  if (l === null && r === null) return { level: null, pan: 0 };
+  const lin = (d: number | null) => (d === null ? 0 : Math.pow(10, d / 20));
+  const a = lin(l), b = lin(r);
+  return { level: Math.round(20 * Math.log10(Math.hypot(a, b)) * 2) / 2, pan: Math.round(((Math.atan2(b, a) * 4) / Math.PI - 1) * 20) / 20 };
+}
+
 /** A stream the TAP heard announced (SAP), as offered in a receiver's picker. */
 export interface RxStream { id: string; name: string; addr: string }
 
@@ -180,7 +200,6 @@ export class WebRouter {
   rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string; channels?: number }> = {};
   /** AMS-81 fold-down per receiver slot, and which rows show their preset's mix grid */
   private ams81: Record<string, Ams81> = {};
-  private amsEdit: Record<number, boolean> = {};
   private rxKey = '';
 
   /** Rows = inputs, columns = outputs. Soundcard is kept off the speakers to avoid feedback. */
@@ -348,7 +367,6 @@ export class WebRouter {
           <span class="wr-ams-tag">AMS-81</span>
           <div class="rc-btn-group">${AMS_PAIRS.map((v) => `<button type="button" class="rc-btn-sel" data-ams-sel="${v}">${v}</button>`).join('')}</div>
           <div class="rc-btn-group">${[...AMS_PRESETS, 'LoRo'].map((v) => `<button type="button" class="rc-btn-sel" data-ams-sel="${v}">${v === 'LoRo' ? 'Lo/Ro' : v}</button>`).join('')}</div>
-          <button type="button" class="rc-btn-sel wr-ams-edit" data-ams-edit="${idx}" title="Edit the preset's L / R mix">edit</button>
         </div>
         <div class="wr-ams-grid" data-ams-grid="${idx}" hidden></div>
       </td></tr>`;
@@ -397,30 +415,51 @@ export class WebRouter {
       this.setReceiver(idx, ref);
     });
     el.addEventListener('input', (e) => (e.target as HTMLInputElement).setCustomValidity?.(''));
-    // AMS-81: a pair, a preset or Lo/Ro; "edit" opens the selected preset's mix grid
+    // AMS-81: a pair, a preset or Lo/Ro; a pair or preset opens its mixer (a fader and pan a channel)
     el.addEventListener('click', (e) => {
-      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-ams-sel], [data-ams-edit]');
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-ams-sel]');
       const row = b?.closest<HTMLElement>('[data-ams]');
       if (!b || !row || b.disabled) return;
       const idx = +row.dataset.ams!;
-      if (b.dataset.amsEdit !== undefined) { this.amsEdit[idx] = !this.amsEdit[idx]; this.renderAms(); return; }
       const a = this.ams81[RECEIVERS[idx].slot];
       if (a) a.select = b.dataset.amsSel!;
       this.renderAms();
       this.postAms({ slot: RECEIVERS[idx].slot, select: b.dataset.amsSel });
     });
-    el.addEventListener('change', (e) => {
-      const t = e.target as HTMLSelectElement;
-      if (t.dataset?.amsCh === undefined) return;
-      const idx = +t.closest<HTMLElement>('[data-ams-grid]')!.dataset.amsGrid!;
+    // Mixer: a fader or pan moved → that channel's L / R gains (sent as the hand moves, ~15 a second)
+    const sendMix = (t: HTMLInputElement) => {
+      const strip = t.closest<HTMLElement>('[data-mix-ch]');
+      const grid = t.closest<HTMLElement>('[data-ams-grid]');
+      if (!strip || !grid) return;
+      const idx = +grid.dataset.amsGrid!, ch = +strip.dataset.mixCh!;
       const a = this.ams81[RECEIVERS[idx].slot];
       const preset = amsSel(a?.select ?? '');
-      if (!a?.presets[preset]) return;
-      const side = t.dataset.amsSide as 'L' | 'R';
-      const ch = +t.dataset.amsCh;
-      const db = t.value === '' ? null : +t.value;
-      a.presets[preset][side][ch - 1] = db;
-      this.postAms({ slot: RECEIVERS[idx].slot, preset, side, ch, db });
+      const mix = a?.presets[preset];
+      if (!mix) return;
+      const lvl = +strip.querySelector<HTMLInputElement>('[data-mix="lvl"]')!.value;
+      const pan = +strip.querySelector<HTMLInputElement>('[data-mix="pan"]')!.value;
+      const [l, r] = panToLR(lvl <= FADER_OFF ? null : lvl, pan);
+      const val = strip.querySelector('.wr-mix-db');
+      if (val) val.textContent = lvl <= FADER_OFF ? 'off' : `${lvl > 0 ? '+' : ''}${lvl}`;
+      for (const [side, db] of [['L', l], ['R', r]] as const) {
+        if (mix[side][ch - 1] === db) continue;
+        mix[side][ch - 1] = db;
+        this.postAms({ slot: RECEIVERS[idx].slot, preset: a!.select === 'Lo/Ro' ? 'LoRo' : a!.select, side, ch, db });
+      }
+    };
+    let mixTimer = 0;
+    el.addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (!t.dataset?.mix) return;
+      window.clearTimeout(mixTimer);
+      mixTimer = window.setTimeout(() => sendMix(t), 60);
+    });
+    // Double-click a pan to centre it, a fader to 0 dB
+    el.addEventListener('dblclick', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (!t.dataset?.mix) return;
+      t.value = '0';
+      sendMix(t);
     });
     if (drawEye) {
       window.setInterval(() => {
@@ -1013,24 +1052,26 @@ export class WebRouter {
         b.disabled = !a || (pair >= 0 && 2 * pair + 1 > chs);
         b.classList.toggle('active', v === sel);
       });
+      // A pair shows its two channels, a preset all eight; Lo/Ro is a fixed fold (no mixer)
       const mix = a?.presets[sel];
-      const edit = row.querySelector<HTMLButtonElement>('[data-ams-edit]')!;
-      edit.disabled = !mix;
-      const open = !!mix && !!this.amsEdit[idx];
-      edit.classList.toggle('active', open);
-      grid.hidden = !open;
-      if (!open || grid.contains(document.activeElement)) continue;
+      grid.hidden = !mix;
+      if (!mix || grid.contains(document.activeElement)) continue;
+      const pair = AMS_PAIRS.indexOf(sel);
+      const chans = pair >= 0 ? [2 * pair, 2 * pair + 1] : Array.from({ length: 8 }, (_, c) => c);
       const key = JSON.stringify([sel, mix, chs]);
       if (grid.dataset.key === key) continue;
       grid.dataset.key = key;
-      const opts = (db: number | null) => `<option value=""${db == null ? ' selected' : ''}>Off</option>`
-        + Array.from({ length: 31 }, (_, i) => i - 15)
-          .map((g) => `<option value="${g}"${db != null && Math.round(db) === g ? ' selected' : ''}>${g > 0 ? `+${g}` : g < 0 ? `\u2212${-g}` : '0'}</option>`).join('');
-      const cells = (side: 'L' | 'R') => mix![side].slice(0, 8).map((db, c) =>
-        `<td><select class="wr-ams-db" data-ams-side="${side}" data-ams-ch="${c + 1}" aria-label="${sel} ${side} ch ${c + 1}"${c >= chs ? ' disabled' : ''}>${opts(db)}</select></td>`).join('');
-      grid.innerHTML = `<table class="wr-ams-mix" aria-label="Preset ${sel} mix (dB)">
-        <thead><tr><th>${sel}</th>${Array.from({ length: 8 }, (_, c) => `<th>${c + 1}</th>`).join('')}</tr></thead>
-        <tbody><tr><th>L</th>${cells('L')}</tr><tr><th>R</th>${cells('R')}</tr></tbody></table>`;
+      grid.innerHTML = `<div class="wr-mix" aria-label="${sel} mix">${chans.map((c) => {
+        const { level, pan } = lrToPan(mix.L[c], mix.R[c]);
+        const off = c >= chs;
+        const lvl = level === null ? FADER_OFF : Math.max(AMS_MIN, Math.min(AMS_MAX, level));
+        return `<div class="wr-mix-ch${off ? ' wr-mix-none' : ''}" data-mix-ch="${c + 1}">
+          <span class="wr-mix-db">${level === null ? 'off' : `${lvl > 0 ? '+' : ''}${lvl}`}</span>
+          <input type="range" class="wr-mix-fader" data-mix="lvl" min="${FADER_OFF}" max="${AMS_MAX}" step="0.5" value="${lvl}" aria-label="Channel ${c + 1} level" title="Channel ${c + 1} level (bottom = off; double-click: 0 dB)"${off ? ' disabled' : ''}>
+          <input type="range" class="wr-mix-pan" data-mix="pan" min="-1" max="1" step="0.05" value="${pan}" aria-label="Channel ${c + 1} pan" title="Channel ${c + 1}: where it leaves, left … right (double-click: centre)"${off ? ' disabled' : ''}>
+          <span class="wr-mix-n">${c + 1}</span>
+        </div>`;
+      }).join('')}</div>`;
     }
   }
 

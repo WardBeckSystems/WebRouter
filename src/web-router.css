@@ -1680,3 +1680,12 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-theme-meters-wrap.wr-art-meter { display: flex; flex-direction: column; align-items: stretch; }
 .wr-theme-meters-wrap.wr-art-meter > .wr-theme-meter-svg { flex: none; }
 .wr-art-tag { position: static; margin-top: 2px; }
+
+/* AMS-81 mixer: a strip per channel, vertical fader over a pan, the channel number at the foot */
+.wr-mix { display: flex; gap: 6px; align-items: stretch; padding: 4px 0; }
+.wr-mix-ch { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; font: 600 0.66rem ui-monospace, monospace; }
+.wr-mix-ch.wr-mix-none { opacity: 0.35; }
+.wr-mix-fader { writing-mode: vertical-lr; direction: rtl; width: 22px; height: 96px; margin: 0; accent-color: #f97316; cursor: ns-resize; }
+.wr-mix-pan { width: 44px; margin: 0; accent-color: #38bdf8; cursor: ew-resize; }
+.wr-mix-db { opacity: 0.8; min-height: 1em; }
+.wr-mix-n { font-weight: 800; }
