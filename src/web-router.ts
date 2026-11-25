@@ -588,7 +588,7 @@ export class WebRouter {
         .then((d) => {
           const sessions: any[] = d?.sap?.sessions ?? [];
           this.rxStreams = sessions
-            .filter((x) => x.multicast_ip && !x.deleted)
+            .filter((x) => x.multicast_ip && !x.deleted && !x.own) // never offer this TAP's own transmitters (a loop)
             .map((x) => ({ id: String(x.session_name || x.id), name: String(x.session_name || x.id), addr: `${x.multicast_ip}:${x.port}` }))
             .sort((a, b) => a.name.localeCompare(b.name));
           this.renderRx();
