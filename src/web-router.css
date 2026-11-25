@@ -1675,3 +1675,8 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-grid .wr-in-strip .wr-art-meter .wr-theme-meter-svg,
 .wr-grid-out .wr-art-meter .wr-theme-meter-svg,
 .wr-grid .wr-grid-out .wr-art-meter .wr-theme-meter-svg { height: auto !important; width: 100%; }
+
+/* The channel ID sits below the cropped meter, never over the glass */
+.wr-theme-meters-wrap.wr-art-meter { display: flex; flex-direction: column; align-items: stretch; }
+.wr-theme-meters-wrap.wr-art-meter > .wr-theme-meter-svg { flex: none; }
+.wr-art-tag { position: static; margin-top: 2px; }
