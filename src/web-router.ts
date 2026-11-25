@@ -455,15 +455,20 @@ export class WebRouter {
 
   /**
    * A source may go to any number of outputs, but never back into itself: a sound card
-   * input that is a monitor / loopback of the outputs cannot feed HW 1 / HW 2, and a received
-   * stream cannot go out again on the Repeater it may be coming from.
+   * input that is a monitor / loopback of the outputs cannot feed HW 1 / HW 2, and a receiver
+   * listening to the TAP's own stream cannot go out again on the Repeater (any other received
+   * stream can).
    */
   private feedback(row: number, col: number): boolean {
     if (row === IN_SOUNDCARD && (col === OUT_SPEAKERS || col === OUT_CUE)) {
       const label = this.scInputs.find((d) => d.id === this.scDevice)?.label ?? '';
       if (/monitor of|loopback|ward-beck tap/i.test(label)) return true;
     }
-    if (isRxRow(row) && col === OUT_REPEATER) return true;
+    if (isRxRow(row) && col === OUT_REPEATER) {
+      const ref = this.rxChoice[row] ?? '';
+      const name = this.rxStreams.find((s) => s.id === ref)?.name ?? ref;
+      if (/ward-beck|wbs-flow|master bus/i.test(name)) return true;
+    }
     return false;
   }
 
@@ -870,6 +875,9 @@ export class WebRouter {
     if (!isRxRow(idx)) return;
     if (streamId) this.rxChoice[idx] = streamId; else delete this.rxChoice[idx];
     try { localStorage.setItem('wr.rxChoice', JSON.stringify(this.rxChoice)); } catch { /* ignore */ }
+    // Now listening to the TAP's own stream: its Repeater route would loop
+    if (this.matrix[idx][OUT_REPEATER] && !this.canRoute(idx, OUT_REPEATER)) this.matrix[idx][OUT_REPEATER] = false;
+    this.refresh();
     if (!streamId) {
       this.post('/api/receiver', { slot: RECEIVERS[idx].slot, stop: true });
       this.rxStatus[idx] = { active: false };
