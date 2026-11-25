@@ -421,8 +421,8 @@ export class WebRouter {
       <tr class="wr-ams-row"><td colspan="4">
         <div class="wr-ams" data-ams="${idx}" aria-label="${c.name} AMS-81 fold-down">
           <span class="wr-ams-tag">AMS-81</span>
-          <div class="rc-btn-group">${AMS_PAIRS.map((v) => `<button type="button" class="rc-btn-sel" data-ams-sel="${v}">${v}</button>`).join('')}</div>
-          <div class="rc-btn-group">${[...AMS_PRESETS, 'LoRo'].map((v) => `<button type="button" class="rc-btn-sel" data-ams-sel="${v}">${v === 'LoRo' ? 'Lo/Ro' : v}</button>`).join('')}</div>
+          <div class="wr-ams-btns">${AMS_PAIRS.map((v) => `<button type="button" class="wr-ams-btn" data-ams-sel="${v}" aria-pressed="false"><span>${v}</span></button>`).join('')}</div>
+          <div class="wr-ams-btns">${[...AMS_PRESETS, 'LoRo'].map((v) => `<button type="button" class="wr-ams-btn" data-ams-sel="${v}" aria-pressed="false"><span>${v === 'LoRo' ? 'Lo/Ro' : v}</span></button>`).join('')}</div>
         </div>
         <div class="wr-ams-grid" data-ams-grid="${idx}" hidden></div>
       </td></tr>`;
@@ -1146,6 +1146,7 @@ export class WebRouter {
         const pair = AMS_PAIRS.indexOf(v);
         b.disabled = !a || (pair >= 0 && 2 * pair + 1 > chs);
         b.classList.toggle('active', v === sel);
+        b.setAttribute('aria-pressed', String(v === sel));
       });
       // A pair shows its two channels, a preset all eight; Lo/Ro is a fixed fold (no mixer)
       const mix = a?.presets[sel];

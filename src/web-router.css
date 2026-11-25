@@ -1659,8 +1659,30 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-rx-table tr.wr-ams-row td { border-top: 0; padding-top: 0; }
 .wr-ams { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wr-ams-tag { font-size: 0.62rem; letter-spacing: 0.12em; opacity: 0.7; }
-.wr-ams .rc-btn-sel { min-width: 34px; justify-content: center; }
-.wr-ams .rc-btn-sel:disabled { opacity: 0.35; cursor: default; }
+/* AMS-81 selectors: round Ward-Beck push-buttons as on the M460A front panel (WBS 460-04-008), legend in the
+   cap. The selected one is lit (if it glows it goes): green lamp; the rest are dark caps. 1.2 px/mm, ø ~22 mm. */
+.wr-ams-btns { display: flex; gap: 6px; }
+.wr-ams-btn {
+  --lamp-hot: #eaffd9; --lamp-warm: #8ef07a; --lamp-rim: #1fae3a; --lamp-edge: #0b5a1c; --lamp-glow: rgba(46, 204, 84, 0.55);
+  --lamp-ink: rgba(4, 60, 18, 0.9);
+  width: 27px; height: 27px; padding: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
+  border: 1.5px solid #050505;
+  background: radial-gradient(circle at 46% 38%, #4a4a4a 0%, #262626 45%, #121212 80%, #050505 100%);
+  box-shadow: 0 1.5px 2px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.wr-ams-btn span {
+  font: 700 7.5px/1 Helvetica, Arial, sans-serif; letter-spacing: 0.02em; white-space: nowrap;
+  color: #d8d8d8; text-shadow: 0 -0.5px 0 rgba(0, 0, 0, 0.8);
+}
+.wr-ams-btn:hover:not(:disabled) { border-color: #3a3a3a; }
+.wr-ams-btn.active {
+  background: radial-gradient(circle at 51% 46%, var(--lamp-hot) 0%, var(--lamp-hot) 18%, var(--lamp-warm) 50%, var(--lamp-rim) 80%, var(--lamp-edge) 100%);
+  box-shadow: 0 0 5px 1px var(--lamp-glow), 0 0 12px 2px var(--lamp-glow), inset 0 0 3px rgba(255, 255, 255, 0.5);
+}
+.wr-ams-btn.active span { color: var(--lamp-ink); text-shadow: 0 0.5px 0 rgba(255, 255, 255, 0.4); }
+.wr-ams-btn:active:not(:disabled) { transform: scale(0.95); }
+.wr-ams-btn:disabled { opacity: 0.3; cursor: default; }
+.wr-ams-btn:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
 .wr-ams-grid { margin-top: 6px; overflow-x: auto; }
 .wr-ams-grid[hidden] { display: none; }
 .wr-ams-mix { border-collapse: collapse; font: 600 0.68rem ui-monospace, monospace; }
