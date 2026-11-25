@@ -77,6 +77,36 @@ function lrToPan(l: number | null, r: number | null): { level: number | null; pa
   return { level: Math.round(20 * Math.log10(Math.hypot(a, b)) * 2) / 2, pan: Math.round(((Math.atan2(b, a) * 4) / Math.PI - 1) * 20) / 20 };
 }
 
+/**
+ * Penny & Giles fader escutcheon, after WBS drawing B 12001 (P&G fader layout, 1979): a 1.59 × 7.50 in
+ * matte black plate, silver lettering both sides of the slot, a countersunk screw top and bottom.
+ * Drawn 159 × 750 (hundredths of an inch) at 150 px tall, so 1 px = 5 units. The scale follows this
+ * fader: +15 at the top, 0, then attenuation 5, 10 and ∞ (off) at the bottom, as P&G print it.
+ */
+const PG_TOP = 120, PG_BOT = 630, PG_THUMB = 35;   // slot ends; half the cap's travel inset (7 px)
+const pgY = (db: number) =>
+  PG_TOP + PG_THUMB + (1 - (db - FADER_OFF) / (AMS_MAX - FADER_OFF)) * (PG_BOT - PG_TOP - 2 * PG_THUMB);
+const PG_PLATE = (() => {
+  const marks: [number, string][] = [[15, '+15'], [10, '+10'], [5, '+5'], [0, '0'], [-5, '5'], [-10, '10'], [FADER_OFF, '∞']];
+  const text = marks.map(([db, t]) => {
+    const y = pgY(db) + 10;
+    return `<text x="34" y="${y}">${t}</text><text x="125" y="${y}">${t}</text>`;
+  }).join('');
+  const screw = (y: number) =>
+    `<circle cx="79.5" cy="${y}" r="17" fill="#050505" stroke="#3a3a3a" stroke-width="3"/><circle cx="79.5" cy="${y}" r="9" fill="#9a9a9a"/><path d="M71 ${y}h17" stroke="#3a3a3a" stroke-width="3"/>`;
+  return `<svg class="wr-pg-plate" viewBox="0 0 159 750" aria-hidden="true">`
+    + `<rect x="1" y="1" width="157" height="748" rx="4" fill="#141414" stroke="#000" stroke-width="2"/>`
+    + `<rect x="3" y="3" width="153" height="744" rx="3" fill="none" stroke="#2a2a2a" stroke-width="2"/>`
+    + screw(31) + screw(719)
+    + `<circle cx="79.5" cy="${PG_TOP - 22}" r="6" fill="none" stroke="#9a9a9a" stroke-width="2.5"/><circle cx="79.5" cy="${PG_BOT + 22}" r="6" fill="none" stroke="#9a9a9a" stroke-width="2.5"/>`
+    + `<rect x="74" y="${PG_TOP}" width="11" height="${PG_BOT - PG_TOP}" rx="5.5" fill="#000"/>`
+    + `<g fill="#d6d6d6" font-family="Helvetica, Arial, sans-serif" font-size="27" font-weight="600" letter-spacing="1" text-anchor="middle">${text}</g>`
+    + `</svg>`;
+})();
+/** Where the cap sits (0 bottom … 1 top) for a fader value. */
+const pgPos = (v: number) => (v - FADER_OFF) / (AMS_MAX - FADER_OFF);
+const pgSet = (t: HTMLInputElement) => t.closest<HTMLElement>('.wr-pg')?.style.setProperty('--pos', String(pgPos(+t.value)));
+
 /** A stream the TAP heard announced (SAP), as offered in a receiver's picker. */
 export interface RxStream { id: string; name: string; addr: string }
 
@@ -455,6 +485,7 @@ export class WebRouter {
     el.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (!t.dataset?.mix) return;
+      if (t.dataset.mix === 'lvl') pgSet(t);
       window.clearTimeout(mixTimer);
       mixTimer = window.setTimeout(() => sendMix(t), 60);
     });
@@ -463,6 +494,7 @@ export class WebRouter {
       const t = e.target as HTMLInputElement;
       if (!t.dataset?.mix) return;
       t.value = '0';
+      if (t.dataset.mix === 'lvl') pgSet(t);
       sendMix(t);
     });
     // CH ON: the lit lamp passes the channel; dark mutes it and keeps the fader and pan for its return
@@ -486,6 +518,7 @@ export class WebRouter {
         // Back where it was; a fader left at the bottom comes back at 0 dB
         const lvl = +fader.value <= FADER_OFF ? 0 : +fader.value;
         fader.value = String(lvl);
+        pgSet(fader);
         [l, r] = panToLR(lvl, +panEl.value);
         delete this.amsMem[memKey];
       }
@@ -1111,7 +1144,8 @@ export class WebRouter {
         const lvl = level === null ? FADER_OFF : Math.max(AMS_MIN, Math.min(AMS_MAX, level));
         return `<div class="wr-mix-ch${off ? ' wr-mix-none' : ''}" data-mix-ch="${c + 1}" data-on="${on ? '1' : ''}">
           <span class="wr-mix-db">${level === null ? '' : `${lvl > 0 ? '+' : ''}${lvl}`}</span>
-          <input type="range" class="wr-mix-fader" data-mix="lvl" min="${FADER_OFF}" max="${AMS_MAX}" step="0.5" value="${lvl}" aria-label="Channel ${c + 1} level" title="Channel ${c + 1} level (bottom = off; double-click: 0 dB)"${off ? ' disabled' : ''}>
+          <div class="wr-pg" style="--pos:${pgPos(lvl)}">${PG_PLATE}<span class="wr-pg-cap" aria-hidden="true"></span>
+            <input type="range" class="wr-mix-fader" data-mix="lvl" min="${FADER_OFF}" max="${AMS_MAX}" step="0.5" value="${lvl}" aria-label="Channel ${c + 1} level" title="Channel ${c + 1} level (bottom = off; double-click: 0 dB)"${off ? ' disabled' : ''}></div>
           <input type="range" class="wr-mix-pan" data-mix="pan" min="-1" max="1" step="0.05" value="${pan}" aria-label="Channel ${c + 1} pan" title="Channel ${c + 1}: where it leaves, left … right (double-click: centre)"${off ? ' disabled' : ''}>
           <button type="button" class="wr-chon${on ? ' lit' : ''}" data-mix-on aria-pressed="${on}" aria-label="Channel ${c + 1} on" title="Channel ${c + 1} on / off"${off ? ' disabled' : ''}><span>CH ON</span></button>
           <span class="wr-mix-n">${c + 1}</span>
