@@ -73,6 +73,8 @@ export interface WebRouterAudio {
   setMonitorVolume(volume: number): void;
   /** Cue / HP output on or off (XTM: plays into the TAP's HW 2 bus). */
   setCue?(enabled: boolean): unknown;
+  /** Monitor into the TAP's HW 1 bus (true) or the system default output (false). */
+  setMonitorSink?(toTap: boolean): unknown;
   /** Sound card input; deviceId from enumerateDevices (null = the default input). */
   connectSoundCard(deviceId?: string | null): unknown;
   connectSystemAudio(surface: 'browser'): unknown;

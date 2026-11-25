@@ -488,7 +488,7 @@ export class WebRouter {
         .then((st: { active?: boolean; config?: { pattern?: string }; test_tone?: { active?: boolean } }) => {
           const wasOnline = this.daemonOnline;
           this.daemonOnline = true;
-          if (!wasOnline) this.refresh(); // the full router (generators, receivers, TAP outputs) comes back
+          if (!wasOnline) { this.syncMonitor(); this.refresh(); } // the full router (and the speakers through HW 1) come back
           // The daemon took over: silence the browser copy so it is only heard once.
           if (!wasOnline) this.audio?.stopBitBuddyGenerator();
           const pat = st.config?.pattern as BitBuddyConfig['pattern'] | undefined;
@@ -699,6 +699,8 @@ export class WebRouter {
   /** Re-derive the physical monitor (speakers) state from the matrix. */
   private syncMonitor(): void {
     if (!this.audio) return;
+    // Speakers: through the TAP's HW 1 bus when it runs (the hardware tab picks the card)
+    this.audio.setMonitorSink?.(this.daemonOnline);
     const a = this.activeInput;
     const on =
       this.matrix[a][OUT_SPEAKERS] ||
