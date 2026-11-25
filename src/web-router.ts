@@ -194,7 +194,7 @@ export class WebRouter {
    * channel / phase; the reference lock is the unit's, shared. pod33Config is the output
    * being played (pod33Out).
    */
-  pod33Outputs: Pick<Pod33Config, 'freq' | 'freqR' | 'levelDb' | 'channelMode'>[] = Array.from({ length: POD33_OUTS }, () => ({
+  pod33Outputs: Pick<Pod33Config, 'freq' | 'freqR' | 'levelDb' | 'channelMode' | 'beep' | 'beepLeft'>[] = Array.from({ length: POD33_OUTS }, () => ({
     freq: DEFAULT_POD33_CONFIG.freq, levelDb: DEFAULT_POD33_CONFIG.levelDb, channelMode: DEFAULT_POD33_CONFIG.channelMode,
   }));
   pod33Out = 0;
@@ -732,7 +732,9 @@ export class WebRouter {
           (has('freq') && tone.freq !== c.freq)
           || (has('freq_r') && (tone.freq_r ?? null) !== (c.freqR ?? null))
           || (has('level_db') && tone.level_db !== c.levelDb)
-          || (has('channel') && tone.channel !== c.channelMode)));
+          || (has('channel') && tone.channel !== c.channelMode)
+          || (has('beep_hz') && tone.beep_hz !== (c.beep ?? 0))
+          || (has('beep_left') && tone.beep_left !== !!c.beepLeft)));
         if (toneWrong) {
           console.info('[router] POD-33 tone out of step with the TAP: re-sent');
           this.post('/api/test_tone', { ...this.toneBody(), restart: this.pod33Engaged });
@@ -1104,11 +1106,11 @@ export class WebRouter {
   /** The output being played, as the TAP's /api/test_tone takes it. */
   private toneBody() {
     const c = this.pod33Config;
-    return { freq: c.freq, freq_r: c.freqR ?? null, level_db: c.levelDb, channel: c.channelMode };
+    return { freq: c.freq, freq_r: c.freqR ?? null, level_db: c.levelDb, channel: c.channelMode, beep_hz: c.beep ?? 0, beep_left: !!c.beepLeft };
   }
 
   /** Update one POD-33 output (0-3); the one playing restarts with it. */
-  setPod33Output(n: number, patch: Partial<Pick<Pod33Config, 'freq' | 'freqR' | 'levelDb' | 'channelMode'>>): void {
+  setPod33Output(n: number, patch: Partial<Pick<Pod33Config, 'freq' | 'freqR' | 'levelDb' | 'channelMode' | 'beep' | 'beepLeft'>>): void {
     const out = this.pod33Outputs[n];
     if (!out) return;
     Object.assign(out, patch);

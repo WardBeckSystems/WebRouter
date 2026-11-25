@@ -5,6 +5,10 @@ export interface Pod33Config {
   freq: number;            // 100, 400, 1000, 0 (silence)
   /** Split tone: the right channel's own frequency (e.g. 1 kHz left / 4 kHz right); null = same as left. */
   freqR?: number | null;
+  /** Beeps per second (1, 2, 3, 4: a beep every 1/1, 1/2, 1/3, 1/4 s); 0 / absent = steady tone. */
+  beep?: number;
+  /** Beep the left channel only (the right stays steady): a stereo ident. */
+  beepLeft?: boolean;
   levelDb: number;         // 0 … -40, -100 = off
   refClock: 'video' | 'aes' | 'int48' | 'int96';
   channelMode: 'stereo' | 'left' | 'right' | 'invert';
