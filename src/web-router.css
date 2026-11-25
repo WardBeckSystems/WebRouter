@@ -1683,16 +1683,16 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 
 /* AMS-81 mixer: a strip per channel, vertical fader over a pan, the channel number at the foot */
 .wr-mix { display: flex; gap: 6px; align-items: stretch; padding: 4px 0; }
-.wr-mix-ch { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 46px; font: 600 0.66rem ui-monospace, monospace; }
+.wr-mix-ch { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 54px; font: 600 0.66rem ui-monospace, monospace; }
 .wr-mix-ch.wr-mix-none { opacity: 0.35; }
-/* Penny & Giles fader (WBS B 12001): the plate is drawn, the cap rides the slot, and an invisible range
-   input over the slot's travel takes the hand and the keyboard. 150 px tall = 7.50 in; slot 16 % … 84 %. */
-.wr-pg { --pos: 0.5; position: relative; width: 32px; height: 150px; flex: none; }
+/* Penny & Giles fader (WBS B 12001): the plate is drawn, the cap (Re'an 24 × 15 mm) rides the slot, and an
+   invisible range over the slot's travel takes the hand and the keyboard. 1.2 px/mm: 48 × 228 px; slot 16 % … 84 %. */
+.wr-pg { --pos: 0.5; position: relative; width: 48px; height: 228px; flex: none; }
 .wr-pg-plate { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .wr-pg-cap {
   --cap: #1f8a9c; --cap-hi: #5fc2cf; --cap-lo: #0f4f5a; --cap-line: #f4f4f4;
-  position: absolute; left: 50%; width: 26px; height: 16px; pointer-events: none;
-  top: calc(16% + 7px + (1 - var(--pos)) * (68% - 14px));
+  position: absolute; left: 50%; width: 29px; height: 18px; pointer-events: none;
+  top: calc(16% + 9px + (1 - var(--pos)) * (68% - 18px));
   transform: translate(-50%, -50%);
   border-radius: 3px;
   background:
@@ -1706,11 +1706,19 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
   writing-mode: vertical-lr; direction: rtl; opacity: 0; cursor: ns-resize;
 }
 .wr-mix-fader, .wr-mix-fader::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; }
-.wr-mix-fader::-webkit-slider-thumb { width: 26px; height: 14px; }
-.wr-mix-fader::-moz-range-thumb { width: 26px; height: 14px; border: 0; }
+.wr-mix-fader::-webkit-slider-thumb { width: 29px; height: 18px; }
+.wr-mix-fader::-moz-range-thumb { width: 29px; height: 18px; border: 0; }
+.wr-mix-pan::-webkit-slider-thumb { width: 12px; height: 12px; }
 .wr-pg:has(.wr-mix-fader:focus-visible) { outline: 2px solid #38bdf8; outline-offset: 2px; border-radius: 3px; }
 .wr-mix-none .wr-pg-cap { filter: grayscale(1); }
-.wr-mix-pan { width: 44px; margin: 0; accent-color: #38bdf8; cursor: ew-resize; }
+/* Elma ø21 knob (1.2 px/mm = 25 px): the drawing turns; an invisible range across the strip takes the hand
+   (drag left / right) and the keyboard. */
+.wr-pan { --rot: 0deg; position: relative; width: 54px; height: 28px; display: grid; place-items: center; }
+.wr-elma { width: 27px; height: 27px; display: block; pointer-events: none; }
+.wr-elma-rot { transform: rotate(var(--rot)); transform-box: view-box; transform-origin: 0 0; }
+.wr-mix-pan { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; }
+.wr-pan:has(.wr-mix-pan:focus-visible) { outline: 2px solid #38bdf8; outline-offset: 1px; border-radius: 50%; }
+.wr-mix-none .wr-elma { opacity: 0.5; }
 .wr-mix-db { opacity: 0.8; min-height: 1em; }
 .wr-mix-n { font-weight: 800; }
 

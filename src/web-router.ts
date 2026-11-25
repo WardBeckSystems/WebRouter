@@ -80,10 +80,10 @@ function lrToPan(l: number | null, r: number | null): { level: number | null; pa
 /**
  * Penny & Giles fader escutcheon, after WBS drawing B 12001 (P&G fader layout, 1979): a 1.59 × 7.50 in
  * matte black plate, silver lettering both sides of the slot, a countersunk screw top and bottom.
- * Drawn 159 × 750 (hundredths of an inch) at 150 px tall, so 1 px = 5 units. The scale follows this
+ * Drawn 159 × 750 (hundredths of an inch) at 1.2 px/mm (48 × 228 px), the scale the Elma knobs share. The scale follows this
  * fader: +15 at the top, 0, then attenuation 5, 10 and ∞ (off) at the bottom, as P&G print it.
  */
-const PG_TOP = 120, PG_BOT = 630, PG_THUMB = 35;   // slot ends; half the cap's travel inset (7 px)
+const PG_TOP = 120, PG_BOT = 630, PG_THUMB = 30;   // slot ends; half the cap's travel inset (9 px at 228 px tall)
 const pgY = (db: number) =>
   PG_TOP + PG_THUMB + (1 - (db - FADER_OFF) / (AMS_MAX - FADER_OFF)) * (PG_BOT - PG_TOP - 2 * PG_THUMB);
 const PG_PLATE = (() => {
@@ -103,6 +103,30 @@ const PG_PLATE = (() => {
     + `<g fill="#d6d6d6" font-family="Helvetica, Arial, sans-serif" font-size="27" font-weight="600" letter-spacing="1" text-anchor="middle">${text}</g>`
     + `</svg>`;
 })();
+/**
+ * Elma ø21 mm collet knob (020-4415, black) with its grey cap (040-4615, with line), seen from above at
+ * 1.2 px/mm: 15 flutes round the skirt, the cap's line is the pointer. Drawn without ids (many on a page).
+ */
+const ELMA_KNOB = (() => {
+  const n = 15, R = 10.5, r = 9.6;
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * 2 * Math.PI, a1 = ((i + 0.62) / n) * 2 * Math.PI, a2 = ((i + 1) / n) * 2 * Math.PI;
+    const pt = (rad: number, a: number) => `${(rad * Math.sin(a)).toFixed(2)} ${(-rad * Math.cos(a)).toFixed(2)}`;
+    d += `${i ? 'L' : 'M'}${pt(R, a0)} A${R} ${R} 0 0 1 ${pt(R, a1)} Q${pt(r - 0.4, (a1 + a2) / 2)} ${pt(R, a2)} `;
+  }
+  return `<svg class="wr-elma" viewBox="-11.5 -11.5 23 23" aria-hidden="true">`
+    + `<circle r="11.2" fill="rgba(0,0,0,0.35)" cy="0.6"/>`
+    + `<g class="wr-elma-rot"><path d="${d}Z" fill="#141414" stroke="#2c2c2c" stroke-width="0.4"/>`
+    + `<circle r="8.75" fill="#0b0b0b"/><circle r="7.85" fill="#8e8e8e" stroke="#5a5a5a" stroke-width="0.4"/>`
+    + `<path d="M0 -7.6 V-3.2" stroke="#1a1a1a" stroke-width="1.1" stroke-linecap="round"/></g>`
+    + `<path d="M-6.6 -4.2 A7.85 7.85 0 0 1 4.6 -6.4" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="0.7" stroke-linecap="round"/>`
+    + `<path d="M-9.6 -3.4 A10.2 10.2 0 0 1 -3.4 -9.6" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="0.6" stroke-linecap="round"/>`
+    + `</svg>`;
+})();
+/** Pan -1 … +1 turns the knob -135° … +135°. */
+const elmaSet = (t: HTMLInputElement) => t.closest<HTMLElement>('.wr-pan')?.style.setProperty('--rot', `${+t.value * 135}deg`);
+
 /** Where the cap sits (0 bottom … 1 top) for a fader value. */
 const pgPos = (v: number) => (v - FADER_OFF) / (AMS_MAX - FADER_OFF);
 const pgSet = (t: HTMLInputElement) => t.closest<HTMLElement>('.wr-pg')?.style.setProperty('--pos', String(pgPos(+t.value)));
@@ -485,7 +509,7 @@ export class WebRouter {
     el.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (!t.dataset?.mix) return;
-      if (t.dataset.mix === 'lvl') pgSet(t);
+      if (t.dataset.mix === 'lvl') pgSet(t); else elmaSet(t);
       window.clearTimeout(mixTimer);
       mixTimer = window.setTimeout(() => sendMix(t), 60);
     });
@@ -494,7 +518,7 @@ export class WebRouter {
       const t = e.target as HTMLInputElement;
       if (!t.dataset?.mix) return;
       t.value = '0';
-      if (t.dataset.mix === 'lvl') pgSet(t);
+      if (t.dataset.mix === 'lvl') pgSet(t); else elmaSet(t);
       sendMix(t);
     });
     // CH ON: the lit lamp passes the channel; dark mutes it and keeps the fader and pan for its return
@@ -1146,7 +1170,8 @@ export class WebRouter {
           <span class="wr-mix-db">${level === null ? '' : `${lvl > 0 ? '+' : ''}${lvl}`}</span>
           <div class="wr-pg" style="--pos:${pgPos(lvl)}">${PG_PLATE}<span class="wr-pg-cap" aria-hidden="true"></span>
             <input type="range" class="wr-mix-fader" data-mix="lvl" min="${FADER_OFF}" max="${AMS_MAX}" step="0.5" value="${lvl}" aria-label="Channel ${c + 1} level" title="Channel ${c + 1} level (bottom = off; double-click: 0 dB)"${off ? ' disabled' : ''}></div>
-          <input type="range" class="wr-mix-pan" data-mix="pan" min="-1" max="1" step="0.05" value="${pan}" aria-label="Channel ${c + 1} pan" title="Channel ${c + 1}: where it leaves, left … right (double-click: centre)"${off ? ' disabled' : ''}>
+          <div class="wr-pan" style="--rot:${pan * 135}deg">${ELMA_KNOB}
+            <input type="range" class="wr-mix-pan" data-mix="pan" min="-1" max="1" step="0.05" value="${pan}" aria-label="Channel ${c + 1} pan" title="Channel ${c + 1}: where it leaves, left … right (double-click: centre)"${off ? ' disabled' : ''}></div>
           <button type="button" class="wr-chon${on ? ' lit' : ''}" data-mix-on aria-pressed="${on}" aria-label="Channel ${c + 1} on" title="Channel ${c + 1} on / off"${off ? ' disabled' : ''}><span>CH ON</span></button>
           <span class="wr-mix-n">${c + 1}</span>
         </div>`;
