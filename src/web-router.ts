@@ -767,7 +767,15 @@ export class WebRouter {
     if (!this.canRoute(row, col)) return;
     if (col < METERS) {
       // A meter input takes one source: the new crosspoint replaces the old, and the
-      // meter's INPUT button follows (the host assigns and plays it).
+      // meter's INPUT button follows (the host assigns and plays it). Clicking the lit
+      // crosspoint empties that input (the host is told row -1).
+      if (this.matrix[row][col]) {
+        this.matrix[row][col] = false;
+        this.refresh();
+        this.onMeterInput?.(col + 1, -1);
+        this.kick();
+        return;
+      }
       this.matrix.forEach((r, i) => { r[col] = i === row; });
       this.refresh();
       this.onMeterInput?.(col + 1, row);
@@ -1463,8 +1471,8 @@ export class WebRouter {
     this.listen();
     // Every input is always listening: its own level, whether it is playing or not.
     const rowDb = INPUTS.map((_, i): [number, number] => {
-      // A POD-33 output is a reference: always on, at its own setting
-      if (isPod33Row(i)) return this.pod33Db(i - IN_POD33);
+      // A POD-33 output has signal only while the POD-33 runs (if it glows it goes)
+      if (isPod33Row(i)) return this.pod33Engaged ? this.pod33Db(i - IN_POD33) : [-60, -60];
       if (this.srcDb[i]) return this.srcDb[i];
       if (i === IN_BITBUDDY && this.bitBuddyEngaged) return this.bitBuddyDb();
       if (i === this.activeInput && !this.externalSource && (i !== IN_TAB || this.tabInfo)) return [vuL, vuR];
