@@ -4,4 +4,4 @@ export { WebRouter, INPUTS, OUTPUTS, RECEIVERS } from './web-router';
 export type { RxStream } from './web-router';
 export type { MeterArt } from './vu-meter';
 export * from './types';
-export { vuDbToAngle } from './vu-meter';
+export { vuDbToAngle, renderArtMeterPair, renderMeterPair, artTemplate, PIVOT_L, PIVOT_Y } from './vu-meter';
