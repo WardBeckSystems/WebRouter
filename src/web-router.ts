@@ -829,9 +829,15 @@ export class WebRouter {
     if (!sel || document.activeElement === sel) return;
     const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
     const known = this.scInputs.some((d) => d.id === this.scDevice);
+    // A sound card's outputs show up as "Monitor of …" inputs: listed as outputs to tap
+    const isOut = (l: string) => /^monitor of /i.test(l);
+    const ins = this.scInputs.filter((d) => !isOut(d.label));
+    const outs = this.scInputs.filter((d) => isOut(d.label) && !/internal/i.test(d.label)); // not the TAP's internal buses
+    const opt = (d: { id: string; label: string }, label = d.label) => `<option value="${esc(d.id)}">${esc(label)}</option>`;
     sel.innerHTML = '<option value="">Default input</option>'
       + (this.scDevice && !known ? `<option value="${esc(this.scDevice)}">(not connected)</option>` : '')
-      + this.scInputs.map((d) => `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join('');
+      + (ins.length ? `<optgroup label="Inputs">${ins.map((d) => opt(d)).join('')}</optgroup>` : '')
+      + (outs.length ? `<optgroup label="Outputs (tap what a card plays)">${outs.map((d) => opt(d, '▶ ' + d.label.replace(/^monitor of /i, ''))).join('')}</optgroup>` : '');
     sel.value = this.scDevice;
   }
 
