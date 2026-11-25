@@ -79,9 +79,11 @@ export interface WebRouterAudio {
   setCue?(enabled: boolean): unknown;
   /** Monitor into the TAP's HW 1 bus (true) or the system default output (false). */
   setMonitorSink?(toTap: boolean): unknown;
+  /** The shared tab's stream, playing or parked: CH 2 keeps listening to it. */
+  tabStream?(): MediaStream | null;
   /** Sound card input; deviceId from enumerateDevices (null = the default input). */
   connectSoundCard(deviceId?: string | null): unknown;
-  connectSystemAudio(surface: 'browser'): unknown;
+  connectSystemAudio(surface: 'browser', forcePrompt?: boolean): unknown;
   startPod33Generator(config: Pod33Config): void;
   stopPod33Generator(): void;
   startBitBuddyGenerator(config: BitBuddyConfig): void;

@@ -646,7 +646,12 @@ export class WebRouter {
       if (el.closest('[data-rx-open]')) { this.onOpenReceivers?.(); return; }
       // Clicking an input strip (not its picker) plays that input
       const strip = el.closest<HTMLElement>('.wr-in-strip[data-in-idx]');
-      if (strip && !el.closest('select') && root.contains(strip)) { this.selectInput(+strip.dataset.inIdx!); return; }
+      if (strip && !el.closest('select') && root.contains(strip)) {
+        // Ctrl-click (⌘) CH 2: share a new tab (a plain click keeps the one shared)
+        if (+strip.dataset.inIdx! === IN_TAB && (e.ctrlKey || e.metaKey)) this.audio?.connectSystemAudio('browser', true);
+        this.selectInput(+strip.dataset.inIdx!);
+        return;
+      }
       const t = el.closest('button');
       if (!t || !root.contains(t)) return;
       const d = t.dataset;
@@ -1343,7 +1348,7 @@ export class WebRouter {
     if (!this.srcBusy && now - this.srcAt > 200) {
       this.srcAt = now;
       this.srcBusy = true;
-      const drop = () => { for (const k of Object.keys(this.srcDb)) if (+k !== IN_SOUNDCARD) delete this.srcDb[+k]; };
+      const drop = () => { for (const k of Object.keys(this.srcDb)) if (+k !== IN_SOUNDCARD && +k !== IN_TAB) delete this.srcDb[+k]; };
       fetch(`${this.daemonUrl}/api/mxl/rings?bins=60`, { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => {
@@ -1362,6 +1367,37 @@ export class WebRouter {
         .finally(() => { this.srcBusy = false; });
     }
     this.probeSoundCard();
+    this.probeTab();
+  }
+
+  /** CH 2 keeps listening to the shared tab while another input plays (the share stays open). */
+  private tabProbe: { ctx: AudioContext; an: AnalyserNode[]; stream: MediaStream } | null = null;
+  private probeTab(): void {
+    const stream = this.audio?.tabStream?.() ?? null;
+    if (this.tabProbe && this.tabProbe.stream !== stream) {
+      void this.tabProbe.ctx.close();
+      this.tabProbe = null;
+      delete this.srcDb[IN_TAB];
+    }
+    if (!stream) return;
+    if (!this.tabProbe) {
+      const ctx = new AudioContext();
+      const split = ctx.createChannelSplitter(2);
+      ctx.createMediaStreamSource(stream).connect(split);
+      const an = [0, 1].map((c) => { const a = ctx.createAnalyser(); a.fftSize = 2048; split.connect(a, c); return a; });
+      this.tabProbe = { ctx, an, stream };
+    }
+    const rms = (a: AnalyserNode) => {
+      a.getFloatTimeDomainData(this.scBuf);
+      let sum = 0;
+      for (let i = 0; i < this.scBuf.length; i++) sum += this.scBuf[i] * this.scBuf[i];
+      const r = Math.sqrt(sum / this.scBuf.length);
+      return r > 1e-5 ? 20 * Math.log10(r) + 18 : -60;
+    };
+    const prev = this.srcDb[IN_TAB] ?? [-60, -60];
+    const k = 0.12;
+    const [l, r] = this.tabProbe.an;
+    this.srcDb[IN_TAB] = [prev[0] + (rms(l) - prev[0]) * k, prev[1] + (rms(r) - prev[1]) * k];
   }
 
   /** CH 1 listens to its sound card all the time (its own small analyser, not the meter's input). */
