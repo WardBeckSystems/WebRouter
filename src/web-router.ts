@@ -11,7 +11,7 @@
  * them), but not their control panels: a host can build those against
  * setPod33 / setPod33Config / setBitBuddy / setBitBuddyConfig / onChange.
  *
- * 10 inputs × 10 outputs. CH 9 / CH 10 are dedicated receivers: the TAP joins the
+ * 9 inputs × 10 outputs. CH 8 / CH 9 are dedicated receivers: the TAP joins the
  * chosen network (AES67 / RAVENNA / SAP) or MoIP stream into its own MXL ring.
  */
 
@@ -38,17 +38,23 @@ export const INPUTS: RouterChannel[] = [
   { tag: 'CH 5', name: 'POD-33 AES3', sub: 'POD-33 DARS rear AES3 out (100/400/1k)', pill: 'pod' },
   { tag: 'CH 6', name: 'POD-33 AES4', sub: 'POD-33 DARS rear AES4 out (100/400/1k)', pill: 'pod' },
   { tag: 'CH 7', name: 'Bit Buddy', sub: 'ABS-1 Bit Spitter', pill: 'abb' },
-  { tag: 'CH 8', name: 'Pink / Sweep', sub: 'Noise Reference', pill: 'noise' },
   // Dedicated receivers: the TAP joins the stream (RTP from its SAP SDP) into its own MXL ring
-  { tag: 'CH 9', name: 'Network', sub: 'AES67 / RAVENNA / SAP stream received by the TAP (MXL flow wbs-network-rx)', pill: 'net' },
-  { tag: 'CH 10', name: 'MoIP', sub: 'MoIP stream received by the TAP (MXL flow wbs-moip-rx)', pill: 'moip' },
+  { tag: 'CH 8', name: 'Network', sub: 'AES67 / RAVENNA / SAP stream received by the TAP, folded to stereo by its AMS-81 (MXL flow wbs-network-ams81)', pill: 'net' },
+  { tag: 'CH 9', name: 'MoIP', sub: 'MoIP stream received by the TAP, folded to stereo by its AMS-81 (MXL flow wbs-moip-ams81)', pill: 'moip' },
 ];
 
-/** Receiver rows: TAP receiver slot and the MXL flow it writes. */
-export const RECEIVERS: Record<number, { slot: 'network' | 'moip'; flow: string }> = {
-  8: { slot: 'network', flow: 'wbs-network-rx' },
-  9: { slot: 'moip', flow: 'wbs-moip-rx' },
+/** Receiver rows: TAP receiver slot, the flow played and metered (its AMS-81 stereo fold-down)
+ *  and the full multichannel flow it receives (the Receivers tab's ring eye). */
+export const RECEIVERS: Record<number, { slot: 'network' | 'moip'; flow: string; rx: string }> = {
+  7: { slot: 'network', flow: 'wbs-network-ams81', rx: 'wbs-network-rx' },
+  8: { slot: 'moip', flow: 'wbs-moip-ams81', rx: 'wbs-moip-rx' },
 };
+
+/** A receiver's AMS-81 fold-down, as GET /api/ams81 reports it. */
+interface Ams81 { select: string; presets: Record<string, { L: (number | null)[]; R: (number | null)[] }>; flow_id: string }
+const AMS_PAIRS = ['1/2', '3/4', '5/6', '7/8'];
+const AMS_PRESETS = ['A', 'B', 'C', 'D'];
+const amsSel = (v: string) => (v === 'Lo/Ro' ? 'LoRo' : v);
 const isRxRow = (i: number) => RECEIVERS[i] !== undefined;
 
 /** A stream the TAP heard announced (SAP), as offered in a receiver's picker. */
@@ -103,7 +109,7 @@ const FLOW_MASTER = 'wbs-flow-master-stereo';
 const FLOW_TONE = 'wbs-flow-ref-tone';
 const FLOW_BITS = 'wbs-flow-bit-spitter';
 
-const PRESETS_5ROW: Record<string, { matrix: boolean[][]; select?: number }> = {
+const PRESETS_4ROW: Record<string, { matrix: boolean[][]; select?: number }> = {
   broadcast: {
     select: 1,
     matrix: [
@@ -111,7 +117,6 @@ const PRESETS_5ROW: Record<string, { matrix: boolean[][]; select?: number }> = {
       [false, false, false, false, true, false, false, false, false, false],
       [false, false, false, false, true, false, false, true, false, false],
       [false, false, false, false, true, false, false, false, false, true],
-      [false, false, false, false, true, false, false, false, false, false],
     ],
   },
   pod33: {
@@ -121,7 +126,6 @@ const PRESETS_5ROW: Record<string, { matrix: boolean[][]; select?: number }> = {
       [false, false, false, false, true, false, false, false, false, false],
       [false, false, false, false, true, true, true, true, false, false],
       [false, false, false, false, true, false, false, false, false, true],
-      [false, false, false, false, true, false, false, false, false, false],
     ],
   },
   bitbuddy: {
@@ -131,11 +135,10 @@ const PRESETS_5ROW: Record<string, { matrix: boolean[][]; select?: number }> = {
       [false, false, false, false, true, false, false, false, false, false],
       [false, false, false, false, true, false, false, true, false, false],
       [false, false, false, false, true, true, true, false, false, true],
-      [false, false, false, false, true, false, false, false, false, false],
     ],
   },
   all: {
-    matrix: Array.from({ length: 5 }, () => [false, false, false, false, true, false, false, true, false, true]),
+    matrix: Array.from({ length: 4 }, () => [false, false, false, false, true, false, false, true, false, true]),
   },
 };
 
@@ -149,7 +152,7 @@ const toRow = (r: number | undefined) => (r === undefined || r <= IN_POD33 ? r :
 /** …and the receiver rows start unrouted. */
 const withRx = (m: boolean[][]): boolean[][] => [...m, ...Object.keys(RECEIVERS).map(() => new Array(m[0].length).fill(false))];
 const PRESETS: Record<string, { matrix: boolean[][]; select?: number }> = Object.fromEntries(
-  Object.entries(PRESETS_5ROW).map(([k, p]) => [k, { matrix: withRx(expandPod33(p.matrix)), select: toRow(p.select) }]),
+  Object.entries(PRESETS_4ROW).map(([k, p]) => [k, { matrix: withRx(expandPod33(p.matrix)), select: toRow(p.select) }]),
 );
 
 const cloneMatrix = (m: boolean[][]) => m.map((row) => row.slice());
@@ -164,11 +167,14 @@ export class WebRouter {
   private onOpenReceivers?: () => void;
   private onMeterInput?: (meter: number, input: number) => void;
   private onPlayFlow?: (flowId: string) => void;
-  /** Streams the TAP has heard announced, offered on CH 9 / CH 10. */
+  /** Streams the TAP has heard announced, offered on CH 8 / CH 9. */
   rxStreams: RxStream[] = [];
   /** What each receiver row is set to (stream id) and the TAP's word on it. */
   rxChoice: Record<number, string> = {};
-  rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string }> = {};
+  rxStatus: Record<number, { active: boolean; status?: string; error?: string | null; hint?: string | null; source?: string; ref?: string; channels?: number }> = {};
+  /** AMS-81 fold-down per receiver slot, and which rows show their preset's mix grid */
+  private ams81: Record<string, Ams81> = {};
+  private amsEdit: Record<number, boolean> = {};
   private rxKey = '';
 
   /** Rows = inputs, columns = outputs. Soundcard is kept off the speakers to avoid feedback. */
@@ -316,7 +322,7 @@ export class WebRouter {
       const idx = +k;
       const c = INPUTS[idx];
       return `<tr>
-        <td class="wr-rx-eye">${drawEye ? `<canvas width="120" height="120" data-rx-eye="${RECEIVERS[idx].flow}" aria-label="${c.name} ring"></canvas>` : ''}</td>
+        <td class="wr-rx-eye" rowspan="2">${drawEye ? `<canvas width="120" height="120" data-rx-eye="${RECEIVERS[idx].rx}" aria-label="${c.name} ring"></canvas>` : ''}</td>
         <th class="wr-rx-name" scope="row"><span class="wr-strip-tag wr-pill-${c.pill}">${c.tag}</span> ${c.name}</th>
         <td>
           <select class="wr-rx-pick" data-rx-pick="${idx}" aria-label="${c.name} flow"><option value="">Choose a stream…</option></select>
@@ -330,7 +336,16 @@ export class WebRouter {
         </td>
         <td class="wr-rx-addr" data-rx-addr="${idx}"></td>
         <td class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></td>
-      </tr>`;
+      </tr>
+      <tr class="wr-ams-row"><td colspan="4">
+        <div class="wr-ams" data-ams="${idx}" aria-label="${c.name} AMS-81 fold-down">
+          <span class="wr-ams-tag">AMS-81</span>
+          <div class="rc-btn-group">${AMS_PAIRS.map((v) => `<button type="button" class="rc-btn-sel" data-ams-sel="${v}">${v}</button>`).join('')}</div>
+          <div class="rc-btn-group">${[...AMS_PRESETS, 'LoRo'].map((v) => `<button type="button" class="rc-btn-sel" data-ams-sel="${v}">${v === 'LoRo' ? 'Lo/Ro' : v}</button>`).join('')}</div>
+          <button type="button" class="rc-btn-sel wr-ams-edit" data-ams-edit="${idx}" title="Edit the preset's L / R mix">edit</button>
+        </div>
+        <div class="wr-ams-grid" data-ams-grid="${idx}" hidden></div>
+      </td></tr>`;
     }).join('');
     el.innerHTML = `<div class="wr-rack"><div class="wr-grid-card wr-rx-card">
       <table class="wr-rx-table" aria-label="Receivers: the flow each one listens to">
@@ -376,6 +391,31 @@ export class WebRouter {
       this.setReceiver(idx, ref);
     });
     el.addEventListener('input', (e) => (e.target as HTMLInputElement).setCustomValidity?.(''));
+    // AMS-81: a pair, a preset or Lo/Ro; "edit" opens the selected preset's mix grid
+    el.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-ams-sel], [data-ams-edit]');
+      const row = b?.closest<HTMLElement>('[data-ams]');
+      if (!b || !row || b.disabled) return;
+      const idx = +row.dataset.ams!;
+      if (b.dataset.amsEdit !== undefined) { this.amsEdit[idx] = !this.amsEdit[idx]; this.renderAms(); return; }
+      const a = this.ams81[RECEIVERS[idx].slot];
+      if (a) a.select = b.dataset.amsSel!;
+      this.renderAms();
+      this.postAms({ slot: RECEIVERS[idx].slot, select: b.dataset.amsSel });
+    });
+    el.addEventListener('change', (e) => {
+      const t = e.target as HTMLSelectElement;
+      if (t.dataset?.amsCh === undefined) return;
+      const idx = +t.closest<HTMLElement>('[data-ams-grid]')!.dataset.amsGrid!;
+      const a = this.ams81[RECEIVERS[idx].slot];
+      const preset = amsSel(a?.select ?? '');
+      if (!a?.presets[preset]) return;
+      const side = t.dataset.amsSide as 'L' | 'R';
+      const ch = +t.dataset.amsCh;
+      const db = t.value === '' ? null : +t.value;
+      a.presets[preset][side][ch - 1] = db;
+      this.postAms({ slot: RECEIVERS[idx].slot, preset, side, ch, db });
+    });
     if (drawEye) {
       window.setInterval(() => {
         if (el.offsetParent === null) return;
@@ -484,7 +524,7 @@ export class WebRouter {
           for (const [row, rx] of Object.entries(RECEIVERS)) {
             const st = d?.[rx.slot];
             const pt = st?.point;
-            this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source, ref: pt?.ref != null ? String(pt.ref) : undefined };
+            this.rxStatus[+row] = { active: !!st?.active, status: pt?.status, error: pt?.error, hint: pt?.hint, source: pt?.source, ref: pt?.ref != null ? String(pt.ref) : undefined, channels: typeof pt?.channel_count === 'number' ? pt.channel_count : undefined };
             if (st?.active && pt?.ref && !this.rxChoice[+row]) this.rxChoice[+row] = String(pt.ref);
             // Always listening: a chosen stream the TAP is not receiving (restart, reload) is started
             if (!st?.active && this.rxChoice[+row] && Date.now() - (this.rxStartedAt[+row] ?? 0) > 10000) {
@@ -493,8 +533,15 @@ export class WebRouter {
             }
           }
           this.renderRx();
+          this.renderAms();
         })
         .catch(() => {});
+      if (this.rxEl) {
+        fetch(`${this.daemonUrl}/api/ams81`, { cache: 'no-store' })
+          .then((r) => (r.ok ? r.json() : Promise.reject()))
+          .then((d) => { this.ams81 = d ?? {}; this.renderAms(); })
+          .catch(() => {});
+      }
     };
     poll();
     pollRx();
@@ -757,7 +804,6 @@ export class WebRouter {
     else if (audio) {
       if (idx === IN_SOUNDCARD) audio.connectSoundCard(this.scDevice || null);
       else if (idx === 1) audio.connectSystemAudio('browser');
-      else if (idx === IN_BITBUDDY + 1) audio.startTestGenerator('pink'); // CH 8 Pink / Sweep
     }
     this.syncMonitor();
     this.hintFlow();
@@ -832,6 +878,56 @@ export class WebRouter {
     }).catch(() => {}).finally(() => {
       if (this.activeInput === idx) { this.onPlayFlow?.(rx.flow); this.onFlowHint?.(rx.flow); }
     });
+  }
+
+  /** Change a receiver's AMS-81 (the TAP saves it); the reply is every fold-down. */
+  private postAms(body: Record<string, unknown>): void {
+    fetch(`${this.daemonUrl}/api/ams81`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { if (d && !d.error) { this.ams81 = d; this.renderAms(); } })
+      .catch(() => {});
+  }
+
+  /** AMS-81 rows: the lit selection, pairs past the stream's channels dark, the preset's mix grid. */
+  private renderAms(): void {
+    for (const k of Object.keys(RECEIVERS)) {
+      const idx = +k;
+      const row = this.rxEl?.querySelector<HTMLElement>(`[data-ams="${idx}"]`);
+      const grid = this.rxEl?.querySelector<HTMLElement>(`[data-ams-grid="${idx}"]`);
+      if (!row || !grid) continue;
+      const a = this.ams81[RECEIVERS[idx].slot];
+      const sel = amsSel(a?.select ?? '');
+      const st = this.rxStatus[idx];
+      const chs = st?.active && st.channels ? st.channels : 8;
+      row.querySelectorAll<HTMLButtonElement>('[data-ams-sel]').forEach((b) => {
+        const v = b.dataset.amsSel!;
+        const pair = AMS_PAIRS.indexOf(v);
+        b.disabled = !a || (pair >= 0 && 2 * pair + 1 > chs);
+        b.classList.toggle('active', v === sel);
+      });
+      const mix = a?.presets[sel];
+      const edit = row.querySelector<HTMLButtonElement>('[data-ams-edit]')!;
+      edit.disabled = !mix;
+      const open = !!mix && !!this.amsEdit[idx];
+      edit.classList.toggle('active', open);
+      grid.hidden = !open;
+      if (!open || grid.contains(document.activeElement)) continue;
+      const key = JSON.stringify([sel, mix, chs]);
+      if (grid.dataset.key === key) continue;
+      grid.dataset.key = key;
+      const opts = (db: number | null) => `<option value=""${db == null ? ' selected' : ''}>Off</option>`
+        + Array.from({ length: 31 }, (_, i) => i - 15)
+          .map((g) => `<option value="${g}"${db != null && Math.round(db) === g ? ' selected' : ''}>${g > 0 ? `+${g}` : g < 0 ? `\u2212${-g}` : '0'}</option>`).join('');
+      const cells = (side: 'L' | 'R') => mix![side].slice(0, 8).map((db, c) =>
+        `<td><select class="wr-ams-db" data-ams-side="${side}" data-ams-ch="${c + 1}" aria-label="${sel} ${side} ch ${c + 1}"${c >= chs ? ' disabled' : ''}>${opts(db)}</select></td>`).join('');
+      grid.innerHTML = `<table class="wr-ams-mix" aria-label="Preset ${sel} mix (dB)">
+        <thead><tr><th>${sel}</th>${Array.from({ length: 8 }, (_, c) => `<th>${c + 1}</th>`).join('')}</tr></thead>
+        <tbody><tr><th>L</th>${cells('L')}</tr><tr><th>R</th>${cells('R')}</tr></tbody></table>`;
+    }
   }
 
   /** Receiver rows: the stream list and what the TAP says about each one. */
@@ -1227,8 +1323,8 @@ export class WebRouter {
   /** TAP flows behind the inputs: POD-33 AES1-4 (ref tone), Bit Buddy, the two receivers. */
   private static readonly SRC_FLOWS: Record<string, number[]> = {
         'wbs-flow-bit-spitter': [IN_BITBUDDY],
-    'wbs-network-rx': [8],
-    'wbs-moip-rx': [9],
+    'wbs-network-ams81': [7],
+    'wbs-moip-ams81': [8],
   };
 
   /** Keep every source's level fresh: TAP flow meters (5 a second) and the sound card probe. */

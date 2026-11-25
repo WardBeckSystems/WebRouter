@@ -1654,3 +1654,17 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-rx-table td, .wr-rx-table tbody th { vertical-align: middle; }
 .wr-rx-custom[hidden] { display: none; }
 .wr-rx-open { cursor: pointer; text-decoration: underline dotted; }
+
+/* AMS-81 fold-down under each receiver: POD-33 buttons (rc-btn-sel) and the preset's mix grid */
+.wr-rx-table tr.wr-ams-row td { border-top: 0; padding-top: 0; }
+.wr-ams { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wr-ams-tag { font-size: 0.62rem; letter-spacing: 0.12em; opacity: 0.7; }
+.wr-ams .rc-btn-sel { min-width: 34px; justify-content: center; }
+.wr-ams .rc-btn-sel:disabled { opacity: 0.35; cursor: default; }
+.wr-ams-grid { margin-top: 6px; overflow-x: auto; }
+.wr-ams-grid[hidden] { display: none; }
+.wr-ams-mix { border-collapse: collapse; font: 600 0.68rem ui-monospace, monospace; }
+.wr-rx-table .wr-ams-mix th, .wr-rx-table .wr-ams-mix td { border-top: 0; padding: 1px 3px; text-align: center; }
+.wr-ams-mix thead th { opacity: 0.7; }
+.wr-ams-db { font: inherit; padding: 1px 2px; border: 1px solid currentColor; border-radius: 3px; background: transparent; color: inherit; }
+.wr-ams-db:disabled { opacity: 0.35; }

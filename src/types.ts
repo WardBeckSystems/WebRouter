@@ -12,7 +12,7 @@ export interface Pod33Config {
 
 export interface BitBuddyConfig {
   /** Source: tone, noise, test patterns or a looped WAV / MP3 file. */
-  pattern: 'tone' | 'pink' | 'white' | 'brown' | 'walk1s' | 'prbs' | 'minmax' | 'file';
+  pattern: 'sweep' | 'tone' | 'pink' | 'white' | 'brown' | 'walk1s' | 'prbs' | 'minmax' | 'file';
   sampleRate: 48000 | 44100 | 32000 | 96000;
   proMode: boolean;            // true = Professional AES3, false = Consumer S/PDIF
   audioData: 'audio' | 'data'; // PCM audio or non-audio bitstream
@@ -38,7 +38,7 @@ export const DEFAULT_POD33_CONFIG: Pod33Config = {
 };
 
 export const DEFAULT_BITBUDDY_CONFIG: BitBuddyConfig = {
-  pattern: 'tone',
+  pattern: 'sweep',
   sampleRate: 48000,
   proMode: true,
   audioData: 'audio',
@@ -102,7 +102,7 @@ export interface WebRouterOptions {
   onFlowHint?: (flowId: string) => void;
   /** Clicking an MXL transmitter column opens that flow (XTM: the Transmitters tab). */
   onOpenFlow?: (flowId: string) => void;
-  /** Open the receivers (CH 9 / CH 10's stream name was clicked). */
+  /** Open the receivers (CH 8 / CH 9's stream name was clicked). */
   onOpenReceivers?: () => void;
   /**
    * A crosspoint on a Meter Input column was made: router input `input` now feeds the
@@ -110,7 +110,7 @@ export interface WebRouterOptions {
    */
   onMeterInput?: (meter: number, input: number) => void;
   /**
-   * A receiver row (CH 9 Network / CH 10 MoIP) was engaged: play the TAP's MXL flow `flowId`
+   * A receiver row (CH 8 Network / CH 9 MoIP) was engaged: play the TAP's MXL flow `flowId`
    * (XTM: puts that flow on the meters).
    */
   onPlayFlow?: (flowId: string) => void;
