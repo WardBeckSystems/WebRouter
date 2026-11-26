@@ -431,6 +431,7 @@ export class WebRouter {
             <div class="wr-rx-addr" data-rx-addr="${idx}"></div>
             <div class="wr-strip-info wr-rx-info" data-rx-info="${idx}"></div>
           </div>
+          <div class="wr-speaker-deco" aria-hidden="true"></div>
         </div>
         <div class="wr-ams" data-ams="${idx}" aria-label="${c.name} AMS-81 fold-down">
           <span class="wr-ams-tag">AMS-81</span>

@@ -1615,13 +1615,14 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-rack .wr-art-tag .wr-strip-tag { font-size: 0.54rem; padding: 0 4px; }
 .wr-rack { padding: 4px; }
 
-/* Receivers tab: one row per receiver, the flow it listens to and what the TAP says */
-.wr-rx-card { padding: 4px 8px; }
-.wr-rx-table { width: 100%; border-collapse: collapse; font: 600 0.75rem ui-monospace, monospace; }
-.wr-rx-table thead th { text-align: left; font-size: 0.62rem; letter-spacing: 0.12em; opacity: 0.7; padding: 6px 8px; }
-.wr-rx-table td, .wr-rx-table tbody th { padding: 6px 8px; border-top: 1px solid rgba(127, 127, 127, 0.25); text-align: left; white-space: nowrap; }
-.wr-rx-table .wr-rx-pick { width: auto; min-width: 240px; margin: 0; font-size: 0.75rem; padding: 2px 4px; }
-.wr-rx-table .wr-rx-info { white-space: normal; }
+/* Receivers tab: receiver 1 and 2 side by side, each a card with the flow it listens to and what the TAP says */
+.wr-rx-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 8px; align-items: start; }
+.wr-rx-card { padding: 8px 10px; min-width: 0; font: 600 0.75rem ui-monospace, monospace; display: flex; flex-direction: column; gap: 8px; }
+.wr-rx-head { display: flex; gap: 10px; align-items: center; }
+.wr-rx-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.wr-rx-name { font-weight: 800; }
+.wr-rx-card .wr-rx-pick { width: 100%; max-width: 320px; margin: 0; font-size: 0.75rem; padding: 2px 4px; }
+.wr-rx-card .wr-rx-info { white-space: normal; }
 .wr-rx-addr { opacity: 0.75; }
 .wr-hw-card { margin-top: 0; }
 
@@ -1642,8 +1643,7 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-hw-bar i.hot { background: #ef4444; }
 
 /* Receivers tab: an eye per receiver, and a stream entered by hand */
-.wr-rx-eye { width: 128px; padding: 4px 8px 4px 0 !important; }
-.wr-rx-eye canvas { width: 120px; height: 120px; display: block; }
+.wr-rx-eye { width: 120px; height: 120px; display: block; flex: none; }
 .wr-rx-custom { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: flex-start; }
 .wr-rx-custom [data-rx-ip-row] { display: inline-flex; gap: 6px; }
 .wr-rx-custom [hidden] { display: none !important; }
@@ -1651,42 +1651,45 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-rx-in[data-rx-ip] { width: 170px; }
 .wr-rx-sdp { width: 420px; max-width: 100%; white-space: pre; resize: vertical; }
 .wr-rx-go { font: 800 0.7rem ui-monospace, monospace; padding: 4px 12px; border-radius: 3px; border: 1px solid #ea580c; background: #ea580c; color: #fff; cursor: pointer; }
-.wr-rx-table td, .wr-rx-table tbody th { vertical-align: middle; }
 .wr-rx-custom[hidden] { display: none; }
 .wr-rx-open { cursor: pointer; text-decoration: underline dotted; }
 
-/* AMS-81 fold-down under each receiver: POD-33 buttons (rc-btn-sel) and the preset's mix grid */
-.wr-rx-table tr.wr-ams-row td { border-top: 0; padding-top: 0; }
+/* AMS-81 fold-down under each receiver: the module's keys and the preset's mix grid */
 .wr-ams { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wr-ams-tag { font-size: 0.62rem; letter-spacing: 0.12em; opacity: 0.7; }
-/* AMS-81 selectors: round Ward-Beck push-buttons as on the M460A front panel (WBS 460-04-008), legend in the
-   cap. The selected one is lit (if it glows it goes): green lamp; the rest are dark caps. 1.2 px/mm, ø ~22 mm. */
+/* AMS-81 selectors: the module's square keys (ams81-front.svg): a black 33 px bezel, a 28 px cap (grey for the
+   INPUTS pairs, yellow for PRESETS A-D) and a lamp window in the cap. The selected one glows (if it glows it
+   goes): red lamp on the grey keys, white-hot on the yellow; the legend is printed above the key (AMS8-1A art). */
 .wr-ams-btns { display: flex; gap: 6px; }
 .wr-ams-btn {
-  --lamp-hot: #eaffd9; --lamp-warm: #8ef07a; --lamp-rim: #1fae3a; --lamp-edge: #0b5a1c; --lamp-glow: rgba(46, 204, 84, 0.55);
-  --lamp-ink: rgba(4, 60, 18, 0.9);
-  width: 27px; height: 27px; padding: 0; border-radius: 50%; cursor: pointer; display: grid; place-items: center;
-  border: 1.5px solid #050505;
-  background: radial-gradient(circle at 46% 38%, #4a4a4a 0%, #262626 45%, #121212 80%, #050505 100%);
-  box-shadow: 0 1.5px 2px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --cap: #3a3d41; --cap-edge: #55595e; --lamp: #a9adb2; --lamp-lit: #ff3a4c; --lamp-glow: rgba(255, 58, 76, 0.7);
+  position: relative; width: 33px; height: 46px; padding: 0; cursor: pointer; border: 0; background: none;
+}
+/* the black bezel and the cap below the legend */
+.wr-ams-btn::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 33px; box-sizing: border-box;
+  border: 2.5px solid #0c0d0e; border-radius: 3px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.14)) padding-box, var(--cap) padding-box;
+  box-shadow: inset 0 0 0 1px var(--cap-edge), 0 1.5px 2px rgba(0, 0, 0, 0.55);
+}
+.wr-ams-btn::after {
+  content: ''; position: absolute; left: 50%; bottom: 13px; width: 12px; height: 7px; transform: translateX(-50%);
+  border-radius: 1px; background: var(--lamp);
 }
 .wr-ams-btn span {
-  font: 700 7.5px/1 Helvetica, Arial, sans-serif; letter-spacing: 0.02em; white-space: nowrap;
-  color: #d8d8d8; text-shadow: 0 -0.5px 0 rgba(0, 0, 0, 0.8);
+  position: absolute; left: -4px; right: -4px; top: 0; text-align: center;
+  font: 700 9px/1 Helvetica, Arial, sans-serif; letter-spacing: 0.02em; white-space: nowrap; color: currentColor;
 }
-.wr-ams-btn:hover:not(:disabled) { border-color: #3a3a3a; }
-.wr-ams-btn.active {
-  background: radial-gradient(circle at 51% 46%, var(--lamp-hot) 0%, var(--lamp-hot) 18%, var(--lamp-warm) 50%, var(--lamp-rim) 80%, var(--lamp-edge) 100%);
-  box-shadow: 0 0 5px 1px var(--lamp-glow), 0 0 12px 2px var(--lamp-glow), inset 0 0 3px rgba(255, 255, 255, 0.5);
-}
-.wr-ams-btn.active span { color: var(--lamp-ink); text-shadow: 0 0.5px 0 rgba(255, 255, 255, 0.4); }
+.wr-ams-btn.wr-ams-preset { --cap: #e9d21c; --cap-edge: #a28f0a; --lamp: #d8c64a; --lamp-lit: #fff6c0; --lamp-glow: rgba(255, 246, 192, 0.9); }
+.wr-ams-btn.active::after { background: var(--lamp-lit); box-shadow: 0 0 4px 1px var(--lamp-glow), 0 0 9px 2px var(--lamp-glow); }
+.wr-ams-btn:hover:not(:disabled)::before { border-color: #2a2c2e; }
 .wr-ams-btn:active:not(:disabled) { transform: scale(0.95); }
 .wr-ams-btn:disabled { opacity: 0.3; cursor: default; }
 .wr-ams-btn:focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; }
-.wr-ams-grid { margin-top: 6px; overflow-x: auto; }
+.wr-ams-grid { overflow-x: auto; }
 .wr-ams-grid[hidden] { display: none; }
 .wr-ams-mix { border-collapse: collapse; font: 600 0.68rem ui-monospace, monospace; }
-.wr-rx-table .wr-ams-mix th, .wr-rx-table .wr-ams-mix td { border-top: 0; padding: 1px 3px; text-align: center; }
+.wr-ams-mix th, .wr-ams-mix td { border-top: 0; padding: 1px 3px; text-align: center; }
 .wr-ams-mix thead th { opacity: 0.7; }
 .wr-ams-db { font: inherit; padding: 1px 2px; border: 1px solid currentColor; border-radius: 3px; background: transparent; color: inherit; }
 .wr-ams-db:disabled { opacity: 0.35; }
@@ -1756,7 +1759,19 @@ body .wr-rack .wr-grid .wr-strip.selected { background: rgba(249, 115, 22, 0.12)
 .wr-chon:active { transform: scale(0.96); }
 .wr-chon:disabled { cursor: default; opacity: 0.4; }
 
+/* Receivers: the micro stereo POD-22s (CH1-CH8) right beside the eye; stereo spacing between pairs */
+.wr-rx-meters { display: flex; gap: 5px; align-items: flex-end; padding: 3px; background: #08090b; border-radius: 3px; flex: none; }
+.wr-rx-meters .p22m-pair { flex: none; }
+
 /* Receiver picker: MXL writers that stopped are dimmed; the data tab's marks in their colours */
 .wr-rx-pick option.wr-rx-idle { color: var(--ink-muted, #64748b); }
 .wr-rx-pick option.wr-rx-meter { color: var(--accent-red, #ff3b30); }
 .wr-rx-pick option.wr-rx-routed { color: #ca8a04; }
+
+/* Panel decoration for speakers: the Ward-Beck.com panel's hex grille (AMS8-1A) in the free space of a card.
+   Only in the Ward-Beck.com theme; the other themes keep their plain face. */
+.wr-speaker-deco { display: none; }
+body.theme-wbs-dark .wr-speaker-deco {
+  display: block; flex: 1; align-self: stretch; min-width: 60px; min-height: 120px; opacity: 0.9;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='23' height='34' viewBox='0 0 23 34'%3E%3Cg fill='none' stroke='%23444b52' stroke-width='1'%3E%3Cpath id='h' d='M0-9.5 8.2-4.75V4.75L0 9.5-8.2 4.75V-4.75Z'/%3E%3Cuse href='%23h' x='23'/%3E%3Cuse href='%23h' y='34'/%3E%3Cuse href='%23h' x='23' y='34'/%3E%3Cuse href='%23h' x='11.5' y='17'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 23px 34px repeat;
+}
